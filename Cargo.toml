@@ -1,0 +1,51 @@
+[package]
+name = "matome"
+version = "0.1.0"
+edition = "2021"
+description = "A Rust CLI tool for collecting, translating, and browsing documentation"
+license = "MIT"
+repository = "https://github.com/example/matome"
+authors = ["Author <author@example.com>"]
+
+[dependencies]
+# CLI & Config
+clap = { version = "4", features = ["derive"] }
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
+
+# Async & Network
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json"] }
+
+# HTML/Markdown
+scraper = "0.26"
+readability-rs = "0.5"
+html2md = "0.2"
+pulldown-cmark = "0.13"
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+tantivy = "0.25"
+lindera-tantivy = "2.0"
+
+# Web Server
+axum = "0.7"
+askama = "0.15"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["fs", "cors"] }
+
+# Utilities
+futures = "0.3"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+sitemap = "0.4"
+walkdir = "2"
+async-trait = "0.1"
+regex-lite = "0.1"
+roxmltree = "0.20"
+
+[dev-dependencies]
+tempfile = "3"
+tokio-test = "0.4"

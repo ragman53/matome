@@ -1,0 +1,33 @@
+# matome glossary - Technical term translations
+
+[[terms]]
+en = "compiler"
+ja = "コンパイラ"
+
+[[terms]]
+en = "runtime"
+ja = "ランタイム"
+
+[[terms]]
+en = "async"
+ja = "非同期"
+
+[[terms]]
+en = "closure"
+ja = "クロージャ"
+
+[[terms]]
+en = "trait"
+ja = "トレイト"
+
+[[terms]]
+en = "ownership"
+ja = "所有権"
+
+[[terms]]
+en = "borrowing"
+ja = "借用"
+
+[[terms]]
+en = "lifetime"
+ja = "ライフタイム"

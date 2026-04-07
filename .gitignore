@@ -1,0 +1,25 @@
+# Rust build outputs
+/target/
+**/*.rs.bk
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local data (created at runtime)
+.matome/
+*.db
+*.db-journal
+
+# Logs
+*.log
+
+# Generated files
+glossary.toml

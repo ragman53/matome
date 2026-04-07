@@ -1,0 +1,6 @@
+{"id":"4a9f096a-1394-439b-a2ba-8c236323d1e1","ts":"2026-04-07T08:26:03.612Z","severity":"info","message":"No MCP servers configured.\n\nAdd servers to .mcp.json or .gsd/mcp.json to enable MCP integrations.\nSee: https://modelcontextprotocol.io/quickstart","source":"notify","read":false}
+{"id":"a430860d-2ebc-49e1-b23b-b490c6772704","ts":"2026-04-07T08:28:54.158Z","severity":"info","message":"Current version: v2.65.0\nChecking npm registry...","source":"notify","read":false}
+{"id":"8254c2f6-0f75-431b-9d9e-268ced924e94","ts":"2026-04-07T08:28:54.714Z","severity":"info","message":"Already up to date (v2.65.0).","source":"notify","read":false}
+{"id":"0987f51d-e691-4604-acf6-2fdeab401eb1","ts":"2026-04-07T09:04:00.140Z","severity":"info","message":"Search provider set to brave. Effective provider: brave","source":"notify","read":false}
+{"id":"093627b1-76b3-4245-a266-cfdb569dade5","ts":"2026-04-07T09:12:28.923Z","severity":"warning","message":"Google Search: No authentication set. Log in via Google or set GEMINI_API_KEY to use google_search.","source":"notify","read":false}
+{"id":"6da45ba4-77d9-41ef-a61d-13e8f7d643f8","ts":"2026-04-07T10:15:19.170Z","severity":"warning","message":"Google Search: No authentication set. Log in via Google or set GEMINI_API_KEY to use google_search.","source":"notify","read":false}
