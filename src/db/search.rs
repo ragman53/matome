@@ -98,7 +98,7 @@ impl SearchEngine {
         writer.delete_term(term);
 
         // Add new document
-        let mut doc = doc!(
+        let doc = doc!(
             self.id_field => id,
             self.url_field => url,
             self.title_field => title,

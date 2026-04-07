@@ -5,7 +5,6 @@
 use crate::config::{Config, Domain};
 use crate::pipeline::RawPage;
 use reqwest::Client;
-use std::collections::HashSet;
 use std::sync::Arc;
 use thiserror::Error;
 use tracing::{debug, info, warn};

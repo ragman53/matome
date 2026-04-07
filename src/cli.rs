@@ -2,7 +2,7 @@
 //!
 //! Defines all command-line interface commands and arguments.
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 /// matome - Collect, translate, and browse documentation locally
@@ -233,7 +233,7 @@ fn serve_command(
 
 /// Show status information
 fn status_command(
-    config_path: &PathBuf,
+    _config_path: &PathBuf,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::db::Database;

@@ -10,7 +10,6 @@ mod glossary;
 pub use crawler::{Crawler, CrawlerError};
 pub use extractor::Extractor;
 pub use translator::Translator;
-pub use glossary::Glossary;
 
 use crate::config::{Config, Domain};
 use crate::db::Database;
@@ -182,7 +181,7 @@ impl Pipeline {
         }).map(|raw_page| {
             let extractor = extractor.clone();
             let translator = translator.clone();
-            let db = db.clone();
+            let db = db;
             let semaphore = semaphore.clone();
             let domain_name = domain_name.clone();
 
@@ -199,7 +198,7 @@ impl Pipeline {
                 let translated = if let Some(ref translator) = translator {
                     match translator.translate(&extracted.markdown).await {
                         Ok(translated_md) => translated_md,
-                        Err(e) => {
+                        Err(_e) => {
                             // Fall back to original if translation fails
                             extracted.markdown.clone()
                         }

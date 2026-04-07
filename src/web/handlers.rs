@@ -2,7 +2,6 @@
 //!
 //! Implements all web UI endpoints.
 
-use crate::db::Database;
 use crate::web::AppState;
 use axum::{
     extract::{Form, Path, Query, State},
@@ -27,7 +26,7 @@ pub enum HandlerError {
 
 impl IntoResponse for HandlerError {
     fn into_response(self) -> Response {
-        let (status, message) = match self {
+        let (_status, message) = match self {
             HandlerError::NotFound => (StatusCode::NOT_FOUND, "Not found"),
             HandlerError::Database(e) => {
                 error!("Database error: {}", e);
@@ -232,7 +231,7 @@ fn render_article(article: &crate::db::ArticleRow, show_original: bool) -> Strin
     };
 
     // Convert markdown to HTML using pulldown-cmark
-    use pulldown_cmark::{html, Parser, Options};
+    use pulldown_cmark::{html, Parser};
     let parser = Parser::new(content);
     let mut html_content = String::new();
     html::push_html(&mut html_content, parser);

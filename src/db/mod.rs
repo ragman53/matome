@@ -7,7 +7,6 @@ mod search;
 mod sqlite;
 
 pub use error::DbError;
-pub use search::SearchEngine;
 pub use sqlite::{ArticleRow, Database};
 
 use crate::config::Config;
