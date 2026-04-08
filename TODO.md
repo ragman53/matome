@@ -92,22 +92,16 @@
 
 ---
 
-## 🧹 Phase 4: Technical Debt (PLANNED)
+## 🧹 Phase 4: Technical Debt (COMPLETED ✅)
 
 ### 🟡 Medium Priority
 
-#### [ ] 4-1. glossary.rs unwrap()撲滅
+#### [x] 4-1. glossary.rs unwrap()撲滅 ✅
 
 **ファイル**: `src/pipeline/glossary.rs`  
-**問題**: 二重unwrap
-
-```rust
-// 変更前
-.unwrap_or_else(|_| regex_lite::Regex::new("").unwrap())
-
-// 変更後
-const EMPTY_PATTERN: &str = "";
-```
+**対応済み**:
+- [x] 二重unwrapを`const EMPTY_PATTERN` + `expect()`に置き換え
+- [x] パターンマッチしないフォールバックパターン`(?! )`を使用
 
 #### [x] 4-2. コードスニペット取得対応 ✅
 

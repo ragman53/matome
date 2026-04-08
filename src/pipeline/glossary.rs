@@ -3,7 +3,6 @@
 //! Handles glossary parsing and term replacement with multi-language support.
 
 use crate::config::GlossaryTerm;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
@@ -14,6 +13,25 @@ pub enum GlossaryError {
     Io(#[from] std::io::Error),
     #[error("TOML parse error: {0}")]
     TomlParse(#[from] toml::de::Error),
+}
+
+/// Fallback regex pattern for empty term (matches nothing)
+/// Using const ensures the pattern is pre-compiled and won't panic
+const EMPTY_PATTERN: &str = r"(?!)";
+
+/// Create regex pattern for word boundary matching (case-insensitive)
+fn create_term_pattern(term: &str) -> regex_lite::Regex {
+    // Use unwrap_or with a const fallback that never panics
+    // The empty pattern (?! ) is a negative lookahead that never matches
+    regex_lite::Regex::new(&format!(r"(?i)\b{}\b", regex_lite::escape(term))).unwrap_or_else(|_| {
+        regex_lite::Regex::new(EMPTY_PATTERN).expect("EMPTY_PATTERN is always valid")
+    })
+}
+
+/// Replace all occurrences of a term in text
+fn replace_term(text: &str, term: &str, replacement: &str) -> String {
+    let pattern = create_term_pattern(term);
+    pattern.replace_all(text, replacement).to_string()
 }
 
 /// Glossary for term replacement, cached per language
@@ -29,16 +47,15 @@ impl Glossary {
         if !path.exists() {
             return Ok(Self::default());
         }
-
         let content = std::fs::read_to_string(path)?;
         let config: GlossaryConfig = toml::from_str(&content)?;
-
         Ok(Self {
             terms: Arc::new(config.terms),
         })
     }
 
     /// Create glossary from terms
+    #[allow(dead_code)]
     pub fn from_terms(terms: Vec<GlossaryTerm>) -> Self {
         Self {
             terms: Arc::new(terms),
@@ -47,26 +64,21 @@ impl Glossary {
 
     /// Apply glossary replacements to text for a specific target language
     pub fn apply_for_lang(&self, text: &str, lang: &str) -> String {
-        let mut result = text.to_string();
-
-        for term in self.terms.iter() {
-            if let Some(translation) = term.get_translation(lang) {
-                let pattern =
-                    regex_lite::Regex::new(&format!(r"(?i)\b{}\b", regex_lite::escape(&term.en)))
-                        .unwrap_or_else(|_| regex_lite::Regex::new("").unwrap());
-                result = pattern.replace_all(&result, translation).to_string();
-            }
-        }
-
-        result
+        self.terms.iter().fold(text.to_string(), |result, term| {
+            term.get_translation(lang)
+                .map(|t| replace_term(&result, &term.en, t))
+                .unwrap_or(result)
+        })
     }
 
     /// Apply glossary replacements to text (defaults to Japanese for backward compatibility)
+    #[allow(dead_code)]
     pub fn apply(&self, text: &str) -> String {
         self.apply_for_lang(text, "ja")
     }
 
     /// Get replacement for a term in a specific language
+    #[allow(dead_code)]
     pub fn get(&self, term: &str, lang: &str) -> Option<String> {
         let term_lower = term.to_lowercase();
         self.terms
@@ -94,6 +106,7 @@ struct GlossaryConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn test_glossary_apply_legacy_ja() {
@@ -109,7 +122,6 @@ mod tests {
                 translations: HashMap::new(),
             },
         ]);
-
         let result = glossary.apply("The compiler handles runtime errors.");
         assert!(result.contains("コンパイラ"));
         assert!(result.contains("ランタイム"));
@@ -128,32 +140,29 @@ mod tests {
             translations: trans,
         }]);
 
-        let result_ja = glossary.apply_for_lang("The compiler is fast.", "ja");
-        assert!(result_ja.contains("コンパイラ"));
-
-        let result_zh = glossary.apply_for_lang("The compiler is fast.", "zh");
-        assert!(result_zh.contains("编译器"));
-
-        let result_ko = glossary.apply_for_lang("The compiler is fast.", "ko");
-        assert!(result_ko.contains("컴파일러"));
-
-        // Unknown language — no replacement
-        let result_fr = glossary.apply_for_lang("The compiler is fast.", "fr");
-        assert!(result_fr.contains("compiler"));
+        assert!(glossary
+            .apply_for_lang("The compiler is fast.", "ja")
+            .contains("コンパイラ"));
+        assert!(glossary
+            .apply_for_lang("The compiler is fast.", "zh")
+            .contains("编译器"));
+        assert!(glossary
+            .apply_for_lang("The compiler is fast.", "ko")
+            .contains("컴파일러"));
+        assert!(!glossary
+            .apply_for_lang("The compiler is fast.", "fr")
+            .contains("コンパイラ"));
     }
 
     #[test]
     fn test_glossary_case_insensitive() {
         let mut trans = HashMap::new();
         trans.insert("ja".to_string(), "API".to_string());
-
         let glossary = Glossary::from_terms(vec![GlossaryTerm {
             en: "API".to_string(),
             ja: None,
             translations: trans,
         }]);
-
-        let result = glossary.apply("Use the api for testing.");
-        assert!(result.contains("API"));
+        assert!(glossary.apply("Use the api for testing.").contains("API"));
     }
 }
