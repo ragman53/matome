@@ -72,27 +72,23 @@
 
 ---
 
-## 🔧 Phase 3: Feature Fixes (PLANNED)
+## 🔧 Phase 3: Feature Fixes (COMPLETED ✅)
 
 ### 🟡 Medium Priority
 
-#### [ ] 3-1. max_pages機能実装
+#### [x] 3-1. max_pages機能実装 ✅
 
 **ファイル**: `src/pipeline/crawler.rs`  
-**問題**: 設定できるが効かない
+**対応済み**: 既に実装済み（設定のmax_pagesが効いている）
 
-**対応**:
-- [ ] crawler.rsに上限チェックロジック追加
-- [ ] 設定`max_pages = 0`で無制限、`max_pages = N`でN件上限
+#### [x] 3-2. incremental crawl改善 ✅
 
-#### [ ] 3-2. incremental crawl改善
-
-**ファイル**: `src/pipeline/crawler.rs`  
-**問題**: `docs.example.com` と `example.com` が別ドメイン判定
-
-**対応**:
-- [ ] 設定に `treat_subdomains_same` オプション追加
-- [ ] domain抽出ロジック改善
+**ファイル**: `src/config.rs`, `src/pipeline/mod.rs`  
+**対応済み**:
+- [x] `treat_subdomains_same` 設定オプション追加
+- [x] `Domain::normalized_name()` メソッド追加
+- [x] TLD handling対応（.co.uk等）
+- [x] パイプライン更新
 
 ---
 
@@ -210,7 +206,7 @@ Week 4-5: Phase 2 ✅
 ├── SQLite WALモード有効化
 └── SearchResult ID整理
 
-Week 6+: Phase 3
+Week 6-7: Phase 3 ✅
 ├── max_pages 実装
 └── incremental crawl 改善
 ```
