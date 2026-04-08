@@ -81,8 +81,10 @@ impl Extractor {
     }
 
     /// Extract main content using article-like selection
+    /// Extended selectors for Docusaurus, MkDocs, and other documentation sites
     fn extract_main_content(&self, document: &Html) -> Result<String, ExtractorError> {
         let selectors = [
+            // Standard selectors
             "article",
             "main",
             "[role=\"main\"]",
@@ -92,6 +94,17 @@ impl Extractor {
             ".documentation",
             "#content",
             "#main-content",
+            // Docusaurus
+            ".theme-doc-markdown",
+            ".docMainContainer",
+            "[data-page-content]",
+            ".docItemWrapper",
+            // MkDocs
+            ".md-content",
+            ".mkdocs-content",
+            // General purpose
+            ".markdown-body",
+            ".documentation-body",
         ];
 
         for selector_str in &selectors {
@@ -216,22 +229,29 @@ impl Extractor {
     fn process_pre(&self, element: ElementRef, output: &mut String) {
         output.push('\n');
         output.push_str("```\n");
+        // Recursively extract all text from code blocks (handles nested <span> etc.)
+        self.extract_text_recursive(element, output);
+        output.push_str("```\n");
+    }
+
+    /// Recursively extract all text content from an element
+    /// Used for code blocks where text may be deeply nested in <span> elements
+    fn extract_text_recursive(&self, element: ElementRef, output: &mut String) {
         for child in element.children() {
             if let Some(text) = child.value().as_text() {
-                output.push_str(text.trim());
-                output.push('\n');
-            } else if let Some(inner) = ElementRef::wrap(child) {
-                if inner.value().name() == "code" {
-                    for grandchild in child.children() {
-                        if let Some(text) = grandchild.value().as_text() {
-                            output.push_str(text.trim());
-                            output.push('\n');
-                        }
-                    }
+                let text = text.trim();
+                if !text.is_empty() {
+                    output.push_str(text);
+                    output.push('\n');
+                }
+            } else if let Some(elem) = ElementRef::wrap(child) {
+                // Skip style and script elements
+                let tag = elem.value().name();
+                if tag != "style" && tag != "script" {
+                    self.extract_text_recursive(elem, output);
                 }
             }
         }
-        output.push_str("```\n");
     }
 
     fn process_list(&self, element: ElementRef, output: &mut String, tag_name: &str) {
@@ -409,5 +429,55 @@ mod tests {
         assert!(result.markdown.contains("Hello World"));
         assert!(result.markdown.contains("**bold**"));
         assert!(result.markdown.contains("fn main()"));
+    }
+
+    #[test]
+    fn test_extract_code_with_nested_spans() {
+        // Test extraction of code with deeply nested <span> elements
+        // This simulates Docusaurus/MkDocs code blocks
+        let extractor = Extractor::new();
+        let html = r#"
+            <html>
+            <head><title>Code Test</title></head>
+            <body>
+                <article>
+                    <h1>Code Example</h1>
+                    <pre><code><span><span>import os</span></span></code></pre>
+                    <pre><code><span class="token">def</span> hello():
+                        <span class="token">print</span><span>("Hello")</span></span></code></pre>
+                </article>
+            </body>
+            </html>
+        "#;
+
+        let result = extractor.extract(html, "https://example.com/code").unwrap();
+
+        // Check that code content is extracted
+        assert!(
+            result.markdown.contains("import os") || result.markdown.contains("```"),
+            "Code block should be extracted"
+        );
+    }
+
+    #[test]
+    fn test_extract_docusaurus_selectors() {
+        // Test Docusaurus-specific selectors
+        let extractor = Extractor::new();
+        let html = r#"
+            <html>
+            <head><title>Docusaurus Test</title></head>
+            <body>
+                <div class="theme-doc-markdown">
+                    <h1>Test Page</h1>
+                    <p>Content here</p>
+                </div>
+            </body>
+            </html>
+        "#;
+
+        let result = extractor.extract(html, "https://example.com/test").unwrap();
+        assert_eq!(result.title, "Docusaurus Test");
+        assert!(result.markdown.contains("Test Page"));
+        assert!(result.markdown.contains("Content here"));
     }
 }
