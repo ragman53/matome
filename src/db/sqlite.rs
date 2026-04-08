@@ -28,6 +28,10 @@ impl Database {
 
         let conn = Connection::open(&db_path)?;
 
+        // Enable WAL mode for better concurrency
+        // WAL mode allows concurrent reads while writing, improving performance
+        conn.execute_batch("PRAGMA journal_mode=WAL;")?;
+
         // Initialize schema
         conn.execute_batch(
             "

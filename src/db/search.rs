@@ -297,12 +297,20 @@ impl SearchEngine {
     }
 }
 
-/// Search result
+/// Search result from Tantivy index
+///
+/// Note: The `id` field is a Tantivy internal document ID (derived from URL hash),
+/// NOT the SQLite AUTOINCREMENT row ID. Use the `url` field to fetch full article
+/// data from SQLite via `Database::get_articles_by_urls()`.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SearchResult {
+    /// Tantivy document ID (URL hash, not SQLite row ID)
     pub id: i64,
+    /// Article URL (use this to fetch from SQLite)
     pub url: String,
+    /// Article title
     pub title: String,
+    /// Article domain
     pub domain: String,
 }
