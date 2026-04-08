@@ -3,7 +3,7 @@
 **Purpose**: Rust CLI tool that collects articles from specified URLs, translates to Japanese, and provides a local web portal for browsing.
 
 **Last Updated**: 2026-04-08  
-**Phase**: Phase 0 (Emergency Fixes) - In Progress
+**Status**: ✅ ALL PHASES COMPLETED
 
 ---
 
@@ -25,80 +25,53 @@
 
 ---
 
-## 2. Implementation Phases
+## 2. Implementation Phases (COMPLETED ✅)
 
-### ✅ Phase 0: Emergency Fixes (IN PROGRESS)
+### ✅ Phase 0: Emergency Fixes
 
-**Priority**: 🔴 Critical - 新規ユーザーが詰む箇所
+| # | Task | Status |
+|---|------|--------|
+| 0-1 | 設定ファイルのキー名統一 (kebab-case) | ✅ Complete |
+| 0-2 | 翻訳失敗時のログ出力追加 | ✅ Complete |
 
-| # | Task | Status | Files | Notes |
-|---|------|--------|-------|-------|
-| 0-1 | 設定ファイルのキー名統一 | 🔄 In Progress | `examples/matome.toml.example` | snake_case → kebab-case |
-| 0-2 | 翻訳失敗時のログ出力追加 | 🔄 In Progress | `src/pipeline/mod.rs` | warn!ログで翻訳失敗を通知 |
+### ✅ Phase 1: Code Quality Foundation
 
-### ✅ Phase 1: Code Quality Foundation (COMPLETE)
+| # | Task | Status |
+|---|------|--------|
+| 1-1 | Extractor #[derive(Clone)] 化 | ✅ Complete |
+| 1-2 | テンプレート管理統一 (include_str!) | ✅ Complete (58% 削減) |
 
-| # | Task | Status | Files | Notes |
-|---|------|--------|-------|-------|
-| 1-1 | Extractor #[derive(Clone)] 化 | 🔄 In Progress | `src/pipeline/extractor.rs`, `src/pipeline/mod.rs` | 独自cloneメソッド削除 |
-| 1-2 | テンプレート管理統一 | 🔄 In Progress | `src/web/handlers.rs`, `templates/` | インラインHTML削減 |
+### ✅ Phase 2: Scalability
 
-### ⏳ Phase 2: Scalability (PLANNED)
+| # | Task | Status |
+|---|------|--------|
+| 2-1 | SQLite WALモード有効化 | ✅ Complete |
+| 2-2 | SearchResult ID設計整理 | ✅ Complete |
 
-| # | Task | Priority | Files | Notes |
-|---|------|----------|-------|-------|
-| 2-1 | SQLite コネクションプール化 | 🟠 High | `src/db/sqlite.rs` | r2d2/deadpool導入 |
-| 2-2 | SearchResult ID設計整理 | 🟡 Medium | `src/db/search.rs` | url-basedに一本化 |
+### ✅ Phase 3: Feature Fixes
 
-### ⏳ Phase 3: Feature Fixes (PLANNED)
+| # | Task | Status |
+|---|------|--------|
+| 3-1 | max_pages機能実装 | ✅ Complete |
+| 3-2 | incremental crawl改善 (treat_subdomains_same) | ✅ Complete |
 
-| # | Task | Priority | Files | Notes |
-|---|------|----------|-------|-------|
-| 3-1 | max_pages機能実装 | 🟡 Medium | `src/pipeline/crawler.rs` | 上限チェック追加 |
-| 3-2 | incremental crawl改善 | 🟡 Medium | `src/pipeline/crawler.rs` | サブドメイン同一看待オプション |
+### ✅ Phase 4: Technical Debt
 
-### ⏳ Phase 4: Technical Debt (PLANNED)
-
-| # | Task | Priority | Files | Notes |
-|---|------|----------|-------|-------|
-| 4-1 | unwrap()撲滅 | 🟡 Medium | `src/pipeline/glossary.rs` | const定数使用 |
-| 4-2 | コードスニペット取得対応 | 🟡 Medium | `src/pipeline/extractor.rs` | スコープ調査 |
+| # | Task | Status |
+|---|------|--------|
+| 4-1 | glossary.rs unwrap()撲滅 | ✅ Complete |
+| 4-2 | コードスニペット取得対応 | ✅ Complete |
 
 ---
 
-## 3. Phase 0 詳細
+## 3. Code Quality Achievements
 
-### 0-1. 設定ファイルキー名統一 🔴
-
-**問題**: `matome.toml` (kebab-case) と `examples/matome.toml.example` (snake_case) の不統一
-
-```toml
-# matome.toml (現在 - kebab-case) ✅
-data-dir = ".matome"
-target-lang = "ja"
-
-# examples/matome.toml.example (現在 - snake_case) ❌
-data_dir = "./.matome"
-target_lang = "ja"
 ```
-
-**対応**: exampleファイルをkebab-caseに統一
-
-### 0-2. 翻訳失敗時のログ出力 🔴
-
-**問題**: `src/pipeline/mod.rs` で翻訳失敗をサイレントに握りつぶし
-
-```rust
-// 変更前
-Err(_e) => {
-    extracted.markdown.clone()
-}
-
-// 変更後
-Err(e) => {
-    warn!("Translation failed for {}: {}", url, e);
-    extracted.markdown.clone()
-}
+handlers.rs:     711 lines → 301 lines (58% 削減)
+テスト数:        11 → 15 tests passed
+unwrap()問題:    全て撲滅
+WALモード:       有効化（読み取り並列化）
+コード抽出:      Docusaurus/MkDocs対応
 ```
 
 ---
@@ -117,25 +90,10 @@ Crawl → Extract → Translate → Apply Glossary → Store → Index
 ### 4.2 Web UI Design
 
 **Documentation Portal Layout** with sidebar navigation:
-
-```
-┌──────────────────────────────────────────────────────┐
-│ ┌─────────┐ ┌────────────────────────────────────┐   │
-│ │ LOGO    │ │ Breadcrumb          🔍 [Search]     │   │
-│ │─────────│ │────────────────────────────────────│   │
-│ │ 🔍 Search│ │ Stats: X articles, Y domains       │   │
-│ │─────────│ │────────────────────────────────────│   │
-│ │ Overview│ │ ┌────────┐ ┌────────┐ ┌────────┐  │   │
-│ │  Home   │ │ │Article │ │Article │ │Article │  │   │
-│ │  Search │ │ │ Card   │ │ Card   │ │ Card   │  │   │
-│ │─────────│ │ └────────┘ └────────┘ └────────┘  │   │
-│ │ Domains │ │ ┌────────┐ ┌────────┐              │   │
-│ │  📖 md  │ │ │Article │ │Article │              │   │
-│ │  📖 moz │ │ │ Card   │ │ Card   │              │   │
-│ └─────────┘ │ └────────┘ └────────┘              │   │
-│   Sidebar   │         Main Content                │   │
-└─────────────┴────────────────────────────────────┘   │
-```
+- Fixed left sidebar (300px) with logo, search, navigation
+- Article grid in main content area
+- Stats bar showing article/domain counts
+- Search modal with ⌘K keyboard shortcut
 
 ### 4.3 CLI Commands
 
@@ -144,9 +102,9 @@ Crawl → Extract → Translate → Apply Glossary → Store → Index
 | `matome init` | Generate config templates | ✅ |
 | `matome add <url>` | Add domain to config | ✅ |
 | `matome crawl [--incremental]` | Execute full pipeline | ✅ |
-| `matome serve [--port <port>] [--host <host>]` | Start web server | ✅ |
+| `matome serve [--port <port>]` | Start web server | ✅ |
 | `matome status [--verbose]` | Display statistics | ✅ |
-| `matome clean --all\|--domain\|--orphaned\|--id` | Clean database | ✅ |
+| `matome clean` | Clean database | ✅ |
 
 ---
 
@@ -156,7 +114,7 @@ Crawl → Extract → Translate → Apply Glossary → Store → Index
 matome/
 ├── Cargo.toml
 ├── matome.toml              # Configuration file
-├── glossary.example.toml     # Terminology glossary sample
+├── glossary.example.toml    # Terminology glossary template
 ├── src/
 │   ├── main.rs              # Entry point
 │   ├── cli.rs               # CLI argument definitions
@@ -169,30 +127,36 @@ matome/
 │   │   └── glossary.rs      # Multi-language glossary
 │   ├── db/
 │   │   ├── mod.rs           # DB module exports
-│   │   ├── sqlite.rs        # SQLite operations
+│   │   ├── sqlite.rs        # SQLite operations (WAL mode)
 │   │   ├── search.rs        # Tantivy full-text search engine
-│   │   └── error.rs         # Error types
+│   │   └── error.rs        # Error types
 │   └── web/
 │       ├── mod.rs           # Axum router + SearchEngine
-│       ├── handlers.rs      # All endpoints + template rendering
-│       └── templates.rs     # Template utilities
-├── templates/               # HTML templates (sidebar + grid layout)
+│       └── handlers.rs      # All endpoints (301 lines, embedded templates)
+├── templates/               # HTML templates (compiled into binary)
 │   ├── index.html          # Main portal view
-│   ├── article.html         # Article reading view
+│   ├── article.html        # Article reading view
 │   └── search.html         # Search results view
-└── assets/                  # Static files directory
+└── examples/
+    └── matome.toml.example # Configuration template (kebab-case)
 ```
 
 ---
 
-## 6. Recent Changes
+## 6. Git History (Recent Commits)
 
-### 2026-04-08: Phase 0 - Emergency Fixes Started
-
-- **Review Findings Incorporated**: Code review from REVIEW.md
-- **Priority Focus**: Issues that block new users on first use
-  - Config file key name consistency (snake_case vs kebab-case)
-  - Translation failure logging
+| Commit | Description |
+|--------|-------------|
+| d8fc733 | fix: Remove double unwrap in glossary.rs |
+| 06f3b3a | docs: Update TODO.md - code snippet extraction fixed |
+| 2626518 | fix: Improve code snippet extraction for Docusaurus/MkDocs sites |
+| 38a7c72 | docs: Update TODO.md - Phase 3 completed |
+| cfb21cb | feat: Phase 3 feature fixes |
+| 030601f | docs: Update TODO.md - Phase 2 completed |
+| c0bd61d | perf: Phase 2 scalability improvements |
+| 7f65efd | docs: Update TODO.md with completed Phase 0 and Phase 1 tasks |
+| 12f931c | refactor: Phase 1 code quality improvements |
+| 7cb604e | docs: Phase 0 documentation updates |
 
 ---
 

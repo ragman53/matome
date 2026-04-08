@@ -94,69 +94,62 @@ impl OllamaTranslator {
     }
 
     fn split_by_code_blocks(&self, text: &str) -> Vec<CodePart> {
-        let mut parts = Vec::new();
-        let mut current = String::new();
-        let mut in_code_block = false;
-        let mut code_fence = String::new();
+        parse_code_blocks(text)
+    }
+}
 
-        let mut chars = text.chars().peekable();
+/// Parse text into code and non-code parts
+fn parse_code_blocks(text: &str) -> Vec<CodePart> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut in_code_block = false;
+    let mut code_fence = String::new();
+    let mut chars = text.chars().peekable();
 
-        while let Some(c) = chars.next() {
-            if c == '`' {
-                let mut fence = String::from(c);
-                for _ in 0..2 {
-                    if chars.peek() == Some(&'`') {
-                        fence.push(chars.next().unwrap());
-                    }
-                }
-
-                if in_code_block {
-                    if fence == code_fence {
-                        current.push_str(&fence);
-                        current.push('\n');
-                        parts.push(CodePart {
-                            is_code: true,
-                            content: current.clone(),
-                        });
-                        current.clear();
-                        in_code_block = false;
-                        code_fence.clear();
-                    } else {
-                        current.push_str(&fence);
-                    }
-                } else if fence.len() == 3 {
+    while let Some(c) = chars.next() {
+        if c == '`' {
+            let fence = collect_backtick_fence(&mut chars, c);
+            if in_code_block {
+                if fence == code_fence {
                     current.push_str(&fence);
-                    code_fence = fence.clone();
-                    parts.push(CodePart {
-                        is_code: false,
-                        content: current.clone(),
-                    });
-                    current.clear();
-                    in_code_block = true;
+                    current.push('\n');
+                    parts.push(CodePart { is_code: true, content: std::mem::take(&mut current) });
+                    in_code_block = false;
+                    code_fence.clear();
                 } else {
                     current.push_str(&fence);
                 }
+            } else if fence.len() == 3 {
+                current.push_str(&fence);
+                code_fence = fence;
+                if !parts.is_empty() || !current.trim_end().starts_with('\n') {
+                    parts.push(CodePart { is_code: false, content: std::mem::take(&mut current) });
+                }
+                in_code_block = true;
             } else {
-                current.push(c);
+                current.push_str(&fence);
             }
+        } else {
+            current.push(c);
         }
-
-        if !current.is_empty() {
-            parts.push(CodePart {
-                is_code: in_code_block,
-                content: current,
-            });
-        }
-
-        if parts.is_empty() {
-            parts.push(CodePart {
-                is_code: false,
-                content: text.to_string(),
-            });
-        }
-
-        parts
     }
+
+    if !current.is_empty() {
+        parts.push(CodePart { is_code: in_code_block, content: current });
+    }
+
+    if parts.is_empty() {
+        parts.push(CodePart { is_code: false, content: text.to_string() });
+    }
+
+    parts
+}
+
+/// Collect backtick fence sequence
+fn collect_backtick_fence(chars: &mut std::iter::Peekable<std::str::Chars>, start: char) -> String {
+    let mut fence = String::from(start);
+    for _ in 0..2 { if chars.peek() == Some(&'`') { fence.push(chars.next().unwrap()); } }
+    fence
 }
 
 struct CodePart {

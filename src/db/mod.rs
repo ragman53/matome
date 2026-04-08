@@ -7,7 +7,7 @@ pub mod search;
 mod sqlite;
 
 pub use error::DbError;
-pub use search::{SearchEngine, SearchResult};
+pub use search::SearchEngine;
 pub use sqlite::{ArticleRow, Database};
 
 /// Database statistics

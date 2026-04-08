@@ -95,16 +95,23 @@ impl Crawler {
 
         if !sitemap_urls.is_empty() {
             debug!("Found {} URLs in sitemap", sitemap_urls.len());
+            let total = sitemap_urls.len();
+            let allowed_urls: Vec<_> = sitemap_urls.into_iter()
+                .filter(|url| self.is_allowed_by_robots(url, &disallowed))
+                .collect();
+            
+            info!("Crawling {} pages from sitemap...", allowed_urls.len());
             let mut pages = Vec::new();
-
-            for url in sitemap_urls {
-                if self.is_allowed_by_robots(&url, &disallowed) {
-                    if let Some(raw_page) = self.fetch_page(&url).await {
-                        pages.push(raw_page);
-                    }
+            
+            for (i, url) in allowed_urls.iter().enumerate() {
+                print_progress(i + 1, total, url);
+                if let Some(raw_page) = self.fetch_page(url).await {
+                    pages.push(raw_page);
                 }
             }
-
+            
+            println!(); // Newline after progress
+            info!("Crawl complete: {} pages discovered", pages.len());
             return Ok(pages);
         }
 
@@ -112,7 +119,10 @@ impl Crawler {
         let mut pages = Vec::new();
         let mut discovered = std::collections::HashSet::new();
         let mut to_visit = vec![domain.url.clone()];
+        let mut total_crawled = 0;
 
+        info!("Crawling via link traversal...");
+        
         while let Some(url) = to_visit.pop() {
             if discovered.contains(&url) {
                 continue;
@@ -120,6 +130,9 @@ impl Crawler {
             discovered.insert(url.clone());
 
             if self.is_allowed_by_robots(&url, &disallowed) {
+                total_crawled += 1;
+                print_progress(total_crawled, discovered.len().max(total_crawled), &url);
+                
                 if let Some(raw_page) = self.fetch_page(&url).await {
                     // Extract links from page
                     let links = self.extract_links(&raw_page.html, &url);
@@ -131,8 +144,16 @@ impl Crawler {
                     pages.push(raw_page);
                 }
             }
+            
+            // Check max_pages limit
+            if self.config.crawl.max_pages > 0 && pages.len() >= self.config.crawl.max_pages {
+                println!();
+                info!("Reached max_pages limit: {}", self.config.crawl.max_pages);
+                break;
+            }
         }
 
+        println!(); // Newline after progress
         info!("Crawl complete: {} pages discovered", pages.len());
         Ok(pages)
     }
@@ -163,94 +184,115 @@ impl Crawler {
     /// Fetch and parse sitemap.xml
     async fn fetch_sitemap(&self, base_url: &str) -> Result<Vec<String>, CrawlerError> {
         let sitemap_url = format!("{}/sitemap.xml", base_url);
-
         let response = match self.client.get(&sitemap_url).send().await {
             Ok(resp) => resp,
-            Err(_) => return Ok(Vec::new()), // Sitemap not found, that's OK
+            Err(_) => return Ok(Vec::new()),
         };
 
         if !response.status().is_success() {
             return Ok(Vec::new());
         }
 
-        let body = response
-            .text()
-            .await
+        let body = response.text().await.map_err(|e| CrawlerError::SitemapParse(e.to_string()))?;
+        self.parse_sitemap_with_submaps(&body).await
+    }
+
+    async fn parse_sitemap_with_submaps(&self, body: &str) -> Result<Vec<String>, CrawlerError> {
+        let xml = roxmltree::Document::parse(body)
             .map_err(|e| CrawlerError::SitemapParse(e.to_string()))?;
 
-        let xml = roxmltree::Document::parse(&body)
-            .map_err(|e| CrawlerError::SitemapParse(e.to_string()))?;
+        let mut urls = extract_loc_nodes(&xml);
+        self.collect_sub_sitemap_urls(&xml, &mut urls).await;
+        Ok(urls)
+    }
 
-        let mut urls = Vec::new();
-
-        // Parse standard sitemap
-        for node in xml.descendants().filter(|n| n.has_tag_name("loc")) {
-            if let Some(loc) = node.text().map(|t| t.trim().to_string()) {
-                if !loc.is_empty() {
-                    urls.push(loc);
-                }
-            }
-        }
-
-        // Parse sitemap index
+    async fn collect_sub_sitemap_urls(&self, xml: &roxmltree::Document<'_>, urls: &mut Vec<String>) {
         for node in xml.descendants().filter(|n| n.has_tag_name("sitemap")) {
             for loc in node.descendants().filter(|n| n.has_tag_name("loc")) {
                 if let Some(loc_text) = loc.text().map(|t| t.trim().to_string()) {
-                    // Recursively fetch sub-sitemaps
-                    if let Ok(sub_urls) = self.client.get(&loc_text).send().await {
-                        if sub_urls.status().is_success() {
-                            if let Ok(sub_body) = sub_urls.text().await {
-                                if let Ok(sub_xml) = roxmltree::Document::parse(&sub_body) {
-                                    for loc_node in sub_xml
-                                        .descendants()
-                                        .filter(|n| n.has_tag_name("loc"))
-                                    {
-                                        if let Some(loc_text) =
-                                            loc_node.text().map(|t| t.to_string())
-                                        {
-                                            urls.push(loc_text);
-                                        }
-                                    }
-                                }
-                            }
+                    if !loc_text.is_empty() {
+                        if let Ok(sub_urls) = self.fetch_sub_sitemap(&loc_text).await {
+                            urls.extend(sub_urls);
                         }
                     }
                 }
             }
         }
+    }
 
-        Ok(urls)
+    async fn fetch_sub_sitemap(&self, url: &str) -> Result<Vec<String>, CrawlerError> {
+        let response = self.client.get(url).send().await?;
+        if !response.status().is_success() {
+            return Ok(Vec::new());
+        }
+        let body = response.text().await.map_err(|e| CrawlerError::SitemapParse(e.to_string()))?;
+        Ok(extract_loc_nodes_from_str(&body))
     }
 
     /// Extract links from HTML page
     fn extract_links(&self, html: &str, base_url: &str) -> Vec<String> {
-        let mut links = Vec::new();
-
         let base = match Url::parse(base_url) {
             Ok(b) => b,
-            Err(_) => return links,
+            Err(_) => return Vec::new(),
         };
 
-        // Simple regex to find href attributes
         let re = regex_lite::Regex::new(r#"href=["']([^"']+)["']"#).unwrap();
-
-        for cap in re.captures_iter(html) {
-            if let Some(href) = cap.get(1) {
-                let href_str = href.as_str();
-                if href_str.starts_with('/') || href_str.starts_with('#') {
-                    // Relative URL
-                    if let Ok(full_url) = base.join(href_str) {
-                        links.push(full_url.to_string());
+        re.captures_iter(html)
+            .filter_map(|cap| {
+                cap.get(1).and_then(|href| {
+                    let href_str = href.as_str();
+                    if href_str.starts_with('/') || href_str.starts_with('#') {
+                        base.join(href_str).ok().map(|u| u.to_string())
+                    } else if href_str.starts_with("http") {
+                        Some(href_str.to_string())
+                    } else {
+                        None
                     }
-                } else if href_str.starts_with("http") {
-                    // Absolute URL
-                    links.push(href_str.to_string());
-                }
-            }
-        }
-
-        links
+                })
+            })
+            .collect()
     }
+}
+
+/// Print progress bar for crawling
+fn print_progress(current: usize, total: usize, url: &str) {
+    // Truncate URL for display
+    let display_url = if url.len() > 60 {
+        format!("...{}", &url[url.len()-60..])
+    } else {
+        url.to_string()
+    };
+    
+    // Calculate percentage
+    let pct = if total > 0 {
+        (current as f64 / total as f64 * 100.0) as u32
+    } else {
+        0
+    };
+    
+    // Progress bar
+    let bar_width = 30;
+    let filled = (current as f64 / total as f64 * bar_width as f64) as usize;
+    let bar: String = "=".repeat(filled) + &"-".repeat(bar_width - filled);
+    
+    print!("\r[{bar}] {pct:3}% ({current}/{total}) {display_url}");
+    std::io::Write::flush(&mut std::io::stdout()).ok();
+}
+
+/// Extract all loc nodes from an XML document
+fn extract_loc_nodes(xml: &roxmltree::Document) -> Vec<String> {
+    xml.descendants()
+        .filter(|n| n.has_tag_name("loc"))
+        .filter_map(|n| n.text().map(|t| t.trim().to_string()))
+        .filter(|loc| !loc.is_empty())
+        .collect()
+}
+
+/// Extract loc nodes from a string (for sub-sitemaps)
+fn extract_loc_nodes_from_str(body: &str) -> Vec<String> {
+    roxmltree::Document::parse(body)
+        .map(|xml| extract_loc_nodes(&xml))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

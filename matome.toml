@@ -1,17 +1,19 @@
-[core]
-data-dir = ".matome"
+# matome configuration
 
-[[domains]]
+[core]
+data_dir = "./.matome"
+
+[[domain]]
 url = "https://docs.mistral.ai/"
 include = ["/**"]
 
 [translate]
-provider = "ollama"
-model = "translategemma:4bb"
-target-lang = "ja"
+provider = "none"
+model = "translategemma:4b"
+target_lang = "ja"
+glossary_file = "glossary.toml"
 
 [crawl]
-concurrency = 8
-respect-robots = true
-timeout = 30
-max-pages = 0
+concurrency = 16
+respect_robots = true
+timeout = 60
