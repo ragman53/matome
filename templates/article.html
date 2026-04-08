@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{title} - matome</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg-primary: #faf8f5;
+      --bg-secondary: #ffffff;
+      --bg-tertiary: #f5f1eb;
+      --accent-warm: #e07a3a;
+      --accent-cool: #3a6e8e;
+      --text-primary: #2d2a26;
+      --text-secondary: #6b6560;
+      --text-muted: #9a958e;
+      --border: #e5e0d8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'IBM Plex Sans', system-ui, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      margin: 0;
+    }
+    .font-display { font-family: 'Crimson Pro', Georgia, serif; }
+    .main-layout {
+      display: flex;
+      min-height: 100vh;
+    }
+    .sidebar {
+      width: 280px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      padding: 1.5rem;
+      position: fixed;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .sidebar-title {
+      font-family: 'Crimson Pro', serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .nav-link {
+      display: block;
+      padding: 0.5rem 0;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.875rem;
+    }
+    .nav-link:hover { color: var(--accent-warm); }
+    .toggle-group {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+    }
+    .toggle-btn {
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      text-decoration: none;
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      transition: all 0.15s ease;
+    }
+    .toggle-btn:hover { background: var(--border); }
+    .toggle-btn.active { background: var(--accent-cool); color: white; }
+    .content-area {
+      margin-left: 280px;
+      flex: 1;
+      padding: 2rem 3rem;
+      max-width: 1000px;
+    }
+    .article-header {
+      margin-bottom: 2rem;
+    }
+    .article-title {
+      font-family: 'Crimson Pro', serif;
+      font-size: 2.25rem;
+      font-weight: 700;
+      line-height: 1.3;
+      margin-bottom: 1rem;
+    }
+    .article-meta {
+      display: flex;
+      gap: 1.5rem;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+    .article-meta a { 
+      color: var(--accent-cool); 
+      text-decoration: none;
+    }
+    .article-meta a:hover { text-decoration: underline; }
+    .article-content {
+      background: var(--bg-secondary);
+      border-radius: 16px;
+      padding: 2rem;
+      border: 1px solid var(--border);
+      line-height: 1.8;
+    }
+    .article-content h1 { font-size: 1.75rem; font-weight: 700; margin: 2rem 0 1rem; }
+    .article-content h2 { 
+      font-size: 1.5rem; 
+      font-weight: 600; 
+      border-bottom: 2px solid var(--border); 
+      padding-bottom: 0.5rem; 
+      margin: 2rem 0 1rem; 
+    }
+    .article-content h3 { font-size: 1.25rem; font-weight: 600; margin: 1.5rem 0 0.75rem; }
+    .article-content p { margin: 1rem 0; }
+    .article-content pre {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 1.25rem;
+      border-radius: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      overflow-x: auto;
+      margin: 1.5rem 0;
+    }
+    .article-content code {
+      background: var(--bg-tertiary);
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.88em;
+      color: var(--accent-warm);
+    }
+    .article-content pre code { background: transparent; color: inherit; padding: 0; }
+    .article-content blockquote {
+      border-left: 4px solid var(--accent-warm);
+      padding: 1rem 1.5rem;
+      background: var(--bg-tertiary);
+      border-radius: 0 12px 12px 0;
+      margin: 1.5rem 0;
+      font-style: italic;
+    }
+    .article-content ul, .article-content ol {
+      padding-left: 1.75rem;
+      margin: 1rem 0;
+    }
+    .article-content li { margin: 0.5rem 0; }
+    .article-content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+    }
+    .article-content th, .article-content td {
+      border: 1px solid var(--border);
+      padding: 0.75rem;
+    }
+    .article-content th {
+      background: var(--bg-tertiary);
+      font-weight: 600;
+    }
+    .article-content a {
+      color: var(--accent-cool);
+      text-decoration: none;
+    }
+    .article-content a:hover { text-decoration: underline; }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.875rem;
+      margin-bottom: 1.5rem;
+    }
+    .back-link:hover { color: var(--accent-warm); }
+    @media (max-width: 800px) {
+      .sidebar { 
+        display: none; 
+      }
+      .content-area { 
+        margin-left: 0; 
+        padding: 1.5rem; 
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="main-layout">
+    <aside class="sidebar">
+      <div class="sidebar-title">📖 matome</div>
+      <nav>
+        <a href="/" class="nav-link">← すべての記事</a>
+      </nav>
+      <div class="toggle-group">
+        <a href="/article/{id}" class="toggle-btn {translated_class}">翻訳</a>
+        <a href="/article/{id}/original" class="toggle-btn {original_class}">原文</a>
+      </div>
+    </aside>
+    <main class="content-area">
+      <a href="/" class="back-link">← すべての記事に戻る</a>
+      <header class="article-header">
+        <h1 class="article-title">{title}</h1>
+        <div class="article-meta">
+          <a href="{url}" target="_blank">元記事を見る →</a>
+          <span>{domain}</span>
+        </div>
+      </header>
+      <article class="article-content">{content}</article>
+    </main>
+  </div>
+</body>
+</html>

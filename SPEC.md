@@ -107,16 +107,16 @@
 [core]
 data_dir = "./.matome"      # DB and index storage location
 
-[[domain]]
+[[domains]]
 url = "https://docs.rust-lang.org"
-include = ["/stable/**"]
+include = ["/**"]
 
-[[domain]]
-url = "https://kubernetes.io/docs"
+[[domains]]
+url = "https://developer.mozilla.org"
 include = ["/**"]
 
 [translate]
-provider = "ollama"         # "deepl" | "ollama" | "libretranslate"
+provider = "ollama"         # "deepl" | "ollama" | "none"
 model = "gemma3:12b"
 target_lang = "ja"
 glossary_file = "glossary.toml"
@@ -158,18 +158,21 @@ matome/
 │   │
 │   ├── db/                  # Data persistence layer
 │   │   ├── mod.rs
-│   │   ├── sqlite.rs        # SQLite (metadata, MD text)
-│   │   └── search.rs        # Tantivy + lindera (full-text search index)
+│   │   ├── sqlite.rs         # SQLite (metadata, MD text)
+│   │   └── search.rs          # Tantivy (full-text search)
 │   │
-│   └── web/                 # Presentation layer
+│   └── web/               # Presentation layer
 │       ├── mod.rs           # Axum router
-│       ├── handlers.rs       # Endpoints
-│       └── templates.rs     # Askama (HTML + Tailwind + HTMX)
+│       ├── handlers.rs      # Endpoints and template rendering
+│       └── templates.rs     # Template utilities
 │
-├── assets/                  # Static files (CSS, etc.)
-├── templates/               # Askama HTML templates
+├── templates/              # HTML templates (sidebar + grid layout)
+│   ├── index.html          # Main portal view
+│   ├── article.html        # Article reading view
+│   └── search.html         # Search results view
+├── assets/                 # Static files (if any)
 ├── glossary.toml            # Terminology glossary
-└── matome.toml              # Configuration file
+└── matome.toml             # Configuration file
 ```
 
 ---
@@ -203,15 +206,42 @@ CREATE INDEX idx_articles_url ON articles(url);
 
 ---
 
-## 8. Web API Endpoints
+## 8. Web UI Architecture
+
+### 8.1 Design Overview
+
+**Documentation Portal Layout** with sidebar navigation:
+- Fixed left sidebar (300px) with logo, search, navigation
+- Article grid in main content area
+- Stats bar showing article/domain counts
+- Search modal with ⌘K keyboard shortcut
+
+**Article Reading View**:
+- Sidebar with navigation + language toggle
+- Main content with rendered Markdown
+- Clean typography with Crimson Pro headings
+
+### 8.2 Web API Endpoints
 
 | Path | Method | Description |
 |------|--------|-------------|
-| `/` | GET | Domain-grouped article list |
-| `/article/:id` | GET | Translated MD display |
-| `/article/:id/original` | GET | Original language display |
-| `/search` | GET | Japanese full-text search |
+| `/` | GET | Article list with sidebar navigation |
+| `/article/:id` | GET | Translated article view |
+| `/article/:id/original` | GET | Original language article view |
+| `/search` | GET | Full-text search results |
+| `/search` | POST | HTMX search (returns cards only) |
+| `/domains` | GET | Domain overview page |
+| `/domain/:domain` | GET | Articles filtered by domain |
 | `/api/articles` | GET | JSON API |
+
+### 8.3 Template System
+
+Templates use a simple `{placeholder}` substitution system:
+- `templates/index.html` - Main portal view
+- `templates/article.html` - Article reading view
+- `templates/search.html` - Search results view
+
+Fallback inline templates are included in `handlers.rs` for reliability.
 
 ---
 

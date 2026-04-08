@@ -14,14 +14,13 @@
 | Configuration Files | toml, serde | TOML simplicity, de facto standard |
 | HTTP Client | reqwest | Async, tokio integration, procedural API |
 | HTML Parsing | scraper | CSS selectors, lightweight |
-| Content Extraction | readability-rs | De facto for article extraction |
-| Markdown Conversion | html2md | Simple HTML → MD conversion |
 | Markdown → HTML | pulldown-cmark | CommonMark parsing for web rendering |
 | SQLite | rusqlite | Synchronous, bundled SQLite |
 | Full-Text Search | tantivy | Rust-native high-speed search engine |
 | Web Server | axum | Lightweight, tower middleware support |
 | Dynamic HTML | htmx | Server-rendered + partial updates |
 | CSS | Tailwind CDN | No build required, CDN usage |
+| Fonts | Google Fonts | Crimson Pro, IBM Plex Sans, JetBrains Mono |
 
 ---
 
@@ -47,7 +46,7 @@
 
 | # | File | Status | Notes |
 |---|------|--------|-------|
-| 2-1 | `src/pipeline/extractor.rs` | ✅ | readability-rs + html2md |
+| 2-1 | `src/pipeline/extractor.rs` | ✅ | scraper + custom HTML→MD conversion |
 
 ### ✅ Phase 3: Translation (COMPLETE)
 
@@ -71,7 +70,7 @@
 |---|------|--------|-------|
 | 5-1 | `src/web/mod.rs` | ✅ | Axum router, SearchEngine integration |
 | 5-2 | `src/web/handlers.rs` | ✅ | All endpoints with full-text search |
-| 5-3 | `templates/` | N/A | Using inline HTML (simple approach) |
+| 5-3 | `templates/` | ✅ | HTML templates for sidebar + grid layout |
 | 5-4 | `assets/` | ✅ | Static directory |
 
 ---
@@ -87,29 +86,58 @@ Crawl → Extract → Translate → Apply Glossary → Store → Index
  HTML             Translation   Replacement
 ```
 
-### 3.2 Glossary System
+### 3.2 Web UI Design
+
+**Documentation Portal Layout** with sidebar navigation:
+
+```
+┌──────────────────────────────────────────────────────┐
+│ ┌─────────┐ ┌────────────────────────────────────┐   │
+│ │ LOGO    │ │ Breadcrumb          🔍 [Search]     │   │
+│ │─────────│ │────────────────────────────────────│   │
+│ │ 🔍 Search│ │ Stats: X articles, Y domains       │   │
+│ │─────────│ │────────────────────────────────────│   │
+│ │ Overview│ │ ┌────────┐ ┌────────┐ ┌────────┐  │   │
+│ │  Home   │ │ │Article │ │Article │ │Article │  │   │
+│ │  Search │ │ │ Card   │ │ Card   │ │ Card   │  │   │
+│ │─────────│ │ └────────┘ └────────┘ └────────┘  │   │
+│ │ Domains │ │ ┌────────┐ ┌────────┐              │   │
+│ │  📖 md  │ │ │Article │ │Article │              │   │
+│ │  📖 moz │ │ │ Card   │ │ Card   │              │   │
+│ └─────────┘ │ └────────┘ └────────┘              │   │
+│   Sidebar   │         Main Content                │   │
+└─────────────┴────────────────────────────────────┘   │
+```
+
+**Article Reading View** with sidebar + content layout:
+
+```
+┌──────────────────────────────────────────────────────┐
+│ ┌─────────────┐ ┌────────────────────────────────┐  │
+│ │ 📖 matome   │ │ ← Back to all articles         │  │
+│ │─────────────│ │                                │  │
+│ │ ← All       │ │ Article Title                  │  │
+│ │─────────────│ │ ─────────────────────────────  │  │
+│ │ Language:   │ │ [翻訳] [原文]                  │  │
+│ │ [翻訳][原文]│ │                                │  │
+│ └─────────────┘ │ Article content in rendered    │  │
+│    Sidebar      │ Markdown with styling...       │  │
+└─────────────────┴────────────────────────────────┘  │
+```
+
+### 3.3 Search Features
+
+- **Quick Search Modal**: Press ⌘K anywhere to open search overlay
+- **Live Results**: HTMX-powered live search with debouncing
+- **Keyboard Shortcuts**: ⌘K (search), Escape (close)
+- **Domain Filtering**: Click domain in sidebar to filter articles
+
+### 3.4 Glossary System
 
 - **Multi-language support**: Terms can have translations for multiple languages
 - **Language-specific replacement**: `Glossary::apply_for_lang(text, "ja")`
 - **Backward compatible**: Legacy `ja` field still works
 - **Case-insensitive matching**: `API` matches `api`, `Api`, etc.
-
-**Example glossary.toml:**
-```toml
-[[terms]]
-en = "compiler"
-ja = "コンパイラ"
-
-[[terms]]
-en = "runtime"
-translations = { ja = "ランタイム", zh = "运行时" }
-```
-
-### 3.3 Search Engine
-
-- **Full-text search**: Tantivy-powered search in title and content
-- **Fallback**: SQLite LIKE search if Tantivy unavailable
-- **URL-based indexing**: Documents indexed by URL
 
 ---
 
@@ -125,11 +153,11 @@ matome/
 │   ├── cli.rs               # CLI argument definitions
 │   ├── config.rs            # Config parsing, multi-language types
 │   ├── pipeline/
-│   │   ├── mod.rs           # Pipeline orchestration (Glossary + Search integrated)
-│   │   ├── crawler.rs      # HTTP fetch, sitemap parsing
+│   │   ├── mod.rs           # Pipeline orchestration
+│   │   ├── crawler.rs       # HTTP fetch, sitemap parsing
 │   │   ├── extractor.rs     # HTML→Markdown conversion
 │   │   ├── translator.rs    # Ollama/DeepL translation
-│   │   └── glossary.rs      # Multi-language glossary
+│   │   └── glossary.rs       # Multi-language glossary
 │   ├── db/
 │   │   ├── mod.rs           # DB module exports
 │   │   ├── sqlite.rs        # SQLite operations
@@ -137,8 +165,12 @@ matome/
 │   │   └── error.rs         # Error types
 │   └── web/
 │       ├── mod.rs           # Axum router + SearchEngine
-│       └── handlers.rs      # All endpoints with full-text search
-├── templates/               # (Not used - inline HTML)
+│       ├── handlers.rs      # All endpoints + template rendering
+│       └── templates.rs     # Template utilities
+├── templates/               # HTML templates (sidebar + grid layout)
+│   ├── index.html          # Main portal view
+│   ├── article.html         # Article reading view
+│   └── search.html         # Search results view
 └── assets/                  # Static files directory
 ```
 
@@ -156,13 +188,27 @@ matome/
 
 ---
 
-## 6. Configuration
+## 6. Web API Endpoints
+
+| Path | Method | Description |
+|------|--------|-------------|
+| `/` | GET | Article list with sidebar navigation |
+| `/article/:id` | GET | Translated article view |
+| `/article/:id/original` | GET | Original language article view |
+| `/search?q=<query>` | GET | Search results page |
+| `/domains` | GET | Domain overview |
+| `/domain/:domain` | GET | Articles filtered by domain |
+| `/api/articles` | GET | JSON API for articles |
+
+---
+
+## 7. Configuration
 
 ### matome.toml
 
 ```toml
 [core]
-data-dir = ".matome"
+data_dir = ".matome"
 
 [[domains]]
 url = "https://docs.example.com/"
@@ -171,14 +217,14 @@ include = ["/**"]
 [translate]
 provider = "ollama"           # or "deepl", "none"
 model = "translategemma:4bb"
-target-lang = "ja"
-glossary-file = "glossary.toml"
+target_lang = "ja"
+glossary_file = "glossary.toml"
 
 [crawl]
 concurrency = 8
-respect-robots = true
+respect_robots = true
 timeout = 30
-max-pages = 0
+max_pages = 0
 ```
 
 ### glossary.toml
@@ -195,25 +241,57 @@ translations = { ja = "API", zh = "API", ko = "API" }
 
 ---
 
-## 7. Known Issues
+## 8. Code Quality Status
 
-### Build Warnings (20 warnings)
-
-Some types and functions are defined but unused. Candidates for cleanup:
-- `src/config.rs`: ConfigError, html_lang, Glossary, Article
-- `src/pipeline/glossary.rs`: Some methods
-- `src/db/`: Some unused methods and fields
-- `src/web/`: Some unused variants
+| Metric | Value | Notes |
+|--------|-------|-------|
+| Tests | ✅ 11/11 passing | Unit tests for core functionality |
+| Build | ✅ Compiles | Minimal warnings |
+| Complexity | ✅ Well-structured | Helper functions extracted |
 
 ---
 
-## 8. Recent Commits
+## 9. Recent Changes
+
+### 2026-04-08: Web UI Redesign
+
+- **New Sidebar Layout**: Fixed left sidebar with navigation
+  - Logo and article count
+  - Quick search button with ⌘K hint
+  - Overview section (Home, Search)
+  - Domain section with article counts
+
+- **Improved Search**:
+  - Press ⌘K anywhere to open search modal
+  - HTMX-powered live search with 300ms debounce
+  - Keyboard navigation (Enter to search, Escape to close)
+
+- **Article Reading View**:
+  - Sidebar with navigation and language toggle
+  - Clean typography with Crimson Pro headings
+  - Responsive design for mobile
+
+- **Domain Filtering**:
+  - New `/domain/:domain` route
+  - Click domains in sidebar to filter articles
+  - Updated breadcrumb showing current filter
+
+- **Design System**:
+  - Warm cream palette (#faf8f5 background)
+  - Orange accent (#e07a3a) + Blue accent (#3a6e8e)
+  - Custom fonts: Crimson Pro (headings), IBM Plex Sans (body), JetBrains Mono (code)
+  - Soft shadows and smooth animations
+
+---
+
+## 10. Git History
 
 | Commit | Description |
 |--------|-------------|
-| `df058c9` | feat: integrate glossary and search engine into pipeline |
-| `c4284c4` | fix: Update default model to translategemma:latest |
-| `73d24fe` | Initial commit |
+| Latest | feat: Redesign web UI with documentation portal layout |
+| Previous | refactor: Code quality refactoring - extract helper functions |
+| Previous | feat: integrate glossary and search engine into pipeline |
+| Previous | Initial commit |
 
 ---
 

@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 
 /// Load template from file or use inline fallback
+#[allow(dead_code)]
 pub fn load_template(name: &str) -> Option<String> {
     let template_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("templates");
 

@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>matome - ドキュメントポータル</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <style>
+    :root {
+      --bg-primary: #faf8f5;
+      --bg-secondary: #ffffff;
+      --bg-tertiary: #f5f1eb;
+      --bg-sidebar: #fdfcfa;
+      --accent-warm: #e07a3a;
+      --accent-cool: #3a6e8e;
+      --text-primary: #2d2a26;
+      --text-secondary: #6b6560;
+      --text-muted: #9a958e;
+      --border: #e5e0d8;
+      --card-shadow: 0 4px 20px rgba(45, 42, 38, 0.08);
+    }
+    
+    * { box-sizing: border-box; }
+    
+    body {
+      font-family: 'IBM Plex Sans', system-ui, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      margin: 0;
+    }
+    
+    .font-display { font-family: 'Crimson Pro', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    
+    /* Sidebar */
+    .sidebar {
+      width: 300px;
+      height: 100vh;
+      position: fixed;
+      left: 0;
+      top: 0;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      transition: transform 0.3s ease;
+      z-index: 40;
+    }
+    
+    .sidebar-header {
+      padding: 1.25rem;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--bg-sidebar);
+      z-index: 10;
+    }
+    
+    .nav-section {
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .nav-section-title {
+      padding: 0.5rem 1.25rem;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.625rem 1.25rem;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.875rem;
+      transition: all 0.15s ease;
+      border-radius: 0;
+    }
+    
+    .nav-item:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+    
+    .nav-item.active {
+      background: linear-gradient(90deg, rgba(224, 122, 58, 0.1) 0%, transparent 100%);
+      color: var(--accent-warm);
+      font-weight: 500;
+      border-left: 3px solid var(--accent-warm);
+      padding-left: calc(1.25rem - 3px);
+    }
+    
+    .nav-item .favicon {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      object-fit: contain;
+    }
+    
+    .nav-item .count {
+      margin-left: auto;
+      font-size: 0.7rem;
+      background: var(--bg-tertiary);
+      padding: 0.125rem 0.5rem;
+      border-radius: 10px;
+      color: var(--text-muted);
+    }
+    
+    /* Main content area */
+    .main-content {
+      margin-left: 300px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    /* Top bar */
+    .topbar {
+      height: 64px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 2rem;
+      position: sticky;
+      top: 0;
+      z-index: 30;
+    }
+    
+    .menu-toggle {
+      display: none;
+      width: 40px;
+      height: 40px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      border-radius: 8px;
+    }
+    
+    .menu-toggle:hover { background: var(--bg-tertiary); }
+    
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+    
+    .breadcrumb a {
+      color: var(--text-secondary);
+      text-decoration: none;
+    }
+    
+    .breadcrumb a:hover { color: var(--accent-warm); }
+    
+    .topbar-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 0.5rem;
+    }
+    
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+      transition: all 0.15s ease;
+    }
+    
+    .icon-btn:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+    
+    /* Search modal */
+    .search-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(45, 42, 38, 0.5);
+      z-index: 100;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 10vh;
+    }
+    
+    .search-overlay.open { display: flex; }
+    
+    .search-modal {
+      width: 100%;
+      max-width: 600px;
+      background: var(--bg-secondary);
+      border-radius: 16px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+      overflow: hidden;
+      animation: slideDown 0.2s ease;
+    }
+    
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .search-input-wrapper {
+      display: flex;
+      align-items: center;
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .search-input-wrapper svg { color: var(--text-muted); flex-shrink: 0; }
+    
+    .search-input {
+      flex: 1;
+      border: none;
+      background: transparent;
+      font-size: 1.125rem;
+      padding: 0.5rem 1rem;
+      outline: none;
+      font-family: inherit;
+    }
+    
+    .search-results {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    
+    .search-result {
+      display: block;
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      text-decoration: none;
+      color: inherit;
+      transition: background 0.15s ease;
+    }
+    
+    .search-result:hover { background: var(--bg-tertiary); }
+    
+    .search-result h4 {
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+    }
+    
+    .search-result p {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      margin: 0;
+    }
+    
+    .search-result .domain {
+      font-size: 0.75rem;
+      color: var(--accent-cool);
+    }
+    
+    /* Article grid */
+    .article-grid {
+      display: grid;
+      gap: 1rem;
+      padding: 2rem;
+    }
+    
+    .article-card {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      box-shadow: var(--card-shadow);
+      transition: all 0.2s ease;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    
+    .article-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(45, 42, 38, 0.12);
+    }
+    
+    .article-card a {
+      display: block;
+      padding: 1.25rem;
+      text-decoration: none;
+      color: inherit;
+    }
+    
+    .article-card .title {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 0.5rem;
+      line-height: 1.4;
+    }
+    
+    .article-card:hover .title { color: var(--accent-warm); }
+    
+    .article-card .desc {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+    
+    .article-card .meta {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-top: 0.75rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 4rem 2rem;
+    }
+    
+    .empty-state svg {
+      width: 64px;
+      height: 64px;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+    
+    /* Stats */
+    .stats-bar {
+      display: flex;
+      gap: 2rem;
+      padding: 1rem 2rem;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .stat {
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      font-family: 'Crimson Pro', serif;
+      color: var(--accent-warm);
+    }
+    
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    /* Responsive */
+    @media (max-width: 900px) {
+      .sidebar {
+        transform: translateX(-100%);
+      }
+      
+      .sidebar.open {
+        transform: translateX(0);
+        box-shadow: 4px 0 20px rgba(0,0,0,0.1);
+      }
+      
+      .main-content {
+        margin-left: 0;
+      }
+      
+      .menu-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+    }
+    
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg-tertiary); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  </style>
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <a href="/" class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-gradient-to-br from-[var(--accent-warm)] to-[var(--accent-cool)] rounded-lg flex items-center justify-center text-xl">📖</div>
+        <div>
+          <h1 class="text-lg font-display font-bold">matome</h1>
+          <p class="text-xs text-[var(--text-muted)]">{count} 記事</p>
+        </div>
+      </a>
+    </div>
+    
+    <!-- Search shortcut -->
+    <div class="p-3">
+      <button onclick="openSearch()" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-muted)] text-sm hover:bg-[var(--border)] transition">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        検索...
+        <span class="ml-auto text-xs bg-[var(--bg-secondary)] px-1.5 py-0.5 rounded">⌘K</span>
+      </button>
+    </div>
+    
+    <!-- Navigation -->
+    <nav>
+      <div class="nav-section">
+        <div class="nav-section-title">概要</div>
+        <a href="/" class="nav-item active">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          ホーム
+        </a>
+        <a href="/search" class="nav-item">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          検索
+        </a>
+      </div>
+      
+      <div class="nav-section">
+        <div class="nav-section-title">ドメイン別</div>
+        {domain_nav}
+      </div>
+    </nav>
+  </aside>
+  
+  <!-- Main content -->
+  <main class="main-content">
+    <div class="topbar">
+      <button class="menu-toggle" onclick="toggleSidebar()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      
+      <div class="breadcrumb">
+        <a href="/">ホーム</a>
+        <span>/</span>
+        <span>すべての記事</span>
+      </div>
+      
+      <div class="topbar-actions">
+        <button class="icon-btn" onclick="openSearch()" title="検索 (⌘K)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        </button>
+      </div>
+    </div>
+    
+    <!-- Stats bar -->
+    <div class="stats-bar">
+      <div class="stat">
+        <div class="stat-value">{count}</div>
+        <div class="stat-label">記事</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">{domain_count}</div>
+        <div class="stat-label">ドメイン</div>
+      </div>
+    </div>
+    
+    <!-- Article grid -->
+    <div class="article-grid">
+      {content}
+    </div>
+  </main>
+  
+  <!-- Search overlay -->
+  <div class="search-overlay" id="searchOverlay" onclick="closeSearch(event)">
+    <div class="search-modal" onclick="event.stopPropagation()">
+      <div class="search-input-wrapper">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" class="search-input" id="searchInput" placeholder="記事を検索..." onkeydown="handleSearchKeydown(event)" autofocus>
+        <button onclick="closeSearch()" class="icon-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="search-results" id="searchResults">
+        <div class="empty-state" style="padding: 2rem;">
+          <p class="text-[var(--text-muted)]">キーワードを入力して検索</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // Sidebar toggle
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('open');
+    }
+    
+    // Search overlay
+    function openSearch() {
+      document.getElementById('searchOverlay').classList.add('open');
+      document.getElementById('searchInput').focus();
+    }
+    
+    function closeSearch(event) {
+      if (event && event.target !== event.currentTarget) return;
+      document.getElementById('searchOverlay').classList.remove('open');
+    }
+    
+    function handleSearchKeydown(event) {
+      if (event.key === 'Escape') closeSearch();
+      if (event.key === 'Enter') {
+        const q = event.target.value;
+        if (q) window.location.href = '/search?q=' + encodeURIComponent(q);
+      }
+    }
+    
+    // Keyboard shortcut for search
+    document.addEventListener('keydown', function(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        openSearch();
+      }
+    });
+    
+    // Live search with HTMX
+    let searchTimeout;
+    document.getElementById('searchInput').addEventListener('input', function(e) {
+      clearTimeout(searchTimeout);
+      const q = e.target.value.trim();
+      
+      if (q.length < 2) {
+        document.getElementById('searchResults').innerHTML = '<div class="empty-state" style="padding: 2rem;"><p class="text-[var(--text-muted)]">キーワードを入力して検索</p></div>';
+        return;
+      }
+      
+      searchTimeout = setTimeout(function() {
+        htmx.ajax('GET', '/search?q=' + encodeURIComponent(q), {target: '#searchResults', swap: 'innerHTML'});
+      }, 300);
+    });
+    
+    // Close sidebar when clicking outside on mobile
+    document.addEventListener('click', function(e) {
+      const sidebar = document.getElementById('sidebar');
+      const menuToggle = document.querySelector('.menu-toggle');
+      if (window.innerWidth <= 900 && 
+          sidebar.classList.contains('open') && 
+          !sidebar.contains(e.target) && 
+          !menuToggle.contains(e.target)) {
+        sidebar.classList.remove('open');
+      }
+    });
+  </script>
+</body>
+</html>

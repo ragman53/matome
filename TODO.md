@@ -1,218 +1,172 @@
 # matome TODO List
 
-**Project**: matome - Rust CLI for documentation collection and translation
-**Last Updated**: 2026-04-08
+**Project**: matome - Rust CLI for documentation collection and translation  
+**Last Updated**: 2026-04-08  
+**Test Status**: ✅ 11/11 passing  
+**Build Status**: ✅ Compiles
 
 ---
 
-## ✅ Completed Tasks
+## ✅ Completed This Session
 
-### 🔧 Bug Fixes
+The Web UI has been completely redesigned with a documentation portal layout:
 
-- [x] **2026-04-08**: Web UI Toggle Bug - Fixed Original button link to `/article/{id}/original`
-
-### 🚀 P0 Critical Issues (ALL COMPLETE)
-
-- [x] **2026-04-08**: Glossary Integration
-  - ✅ Added `Glossary` field to `Pipeline` struct
-  - ✅ Loads glossary from `config.translate.glossary_file`
-  - ✅ Applies terminology replacements after translation
-  - ✅ Multi-language support with `apply_for_lang()`
-
-- [x] **2026-04-08**: Search Engine Integration
-  - ✅ Added `SearchEngine` to `Pipeline` struct (wrapped in `Arc`)
-  - ✅ Indexes documents after saving to database
-  - ✅ Web handlers use `SearchEngine::search()` for full-text search
-  - ✅ Added `get_articles_by_urls()` to fetch articles by URL
+- [x] **Sidebar Navigation** - Fixed left panel with logo, search, overview, domain links
+- [x] **Article Grid** - Responsive card layout on main content area
+- [x] **Search Modal** - ⌘K shortcut with HTMX live search
+- [x] **Domain Filtering** - `/domain/:domain` route with sidebar navigation
+- [x] **Article Reading View** - Sidebar with nav + language toggle (翻訳/原文)
+- [x] **Responsive Design** - Sidebar collapses on mobile (<900px)
+- [x] **Design System** - Warm palette, custom fonts, soft shadows
 
 ---
 
-## 🟡 Medium Priority (P1)
+## 📋 Remaining TODO List
 
-### 🟡 P1: Clean Up Dead Code (20 Build Warnings)
+### 🟢 P3: Missing Features (Nice to Have)
 
-#### Low-Effort Removals
+#### Article Management
 
-| File | Item | Action |
-|------|------|--------|
-| `src/config.rs` | `ConfigError` | Remove - redundant |
-| `src/config.rs` | `html_lang` function | Remove - unused |
-| `src/web/mod.rs` | `ServerError::Template` | Remove - unused |
-| `src/web/mod.rs` | `AppState.data_dir` | Remove - unused |
-| `src/web/handlers.rs` | `HandlerError::Render` | Remove - unused |
-| `src/web/templates.rs` | `load_template` function | Remove - unused |
-| `src/pipeline/mod.rs` | `ExtractedPage.url` field | Remove - unused |
-| `src/db/sqlite.rs` | `Database.path` field | Remove - unused |
-| `src/db/sqlite.rs` | `ArticleRow.updated_at` | Remove or use |
+- [ ] **Delete functionality**
+  - Add `matome delete <id>` CLI command
+  - Add delete endpoint `DELETE /api/articles/:id`
+  - Add delete button in article view
+  - Remove from search index on delete
 
-#### Keep for Future Use
+- [ ] **Edit functionality**
+  - Edit article title/description
+  - Re-translate individual article
 
-| File | Item | Reason |
-|------|------|--------|
-| `src/config.rs` | `Glossary` struct | May want config-level glossary |
-| `src/config.rs` | `Article` struct | May be useful later |
-| `src/db/sqlite.rs` | `get_articles_by_domain` | Useful for domain filtering |
-| `src/db/sqlite.rs` | `delete_article` | Useful for maintenance |
-| `src/db/sqlite.rs` | `clear` | Useful for reset |
-| `src/pipeline/glossary.rs` | `get`, `from_terms` | Useful API |
+#### UI Enhancements
 
----
+- [ ] **Reading Progress** - Show scroll position in article
+- [ ] **Dark Mode** - Toggle between light/dark themes
+- [ ] **Bookmarks/Favorites** - Save important articles
+- [ ] **Reading History** - Track recently viewed articles
+- [ ] **Tags/Categories** - User-defined tagging system
 
-## 🟢 Low Priority (P2)
+#### Performance
 
-### 🟢 P2: Testing
+- [ ] **Caching**
+  - Cache translation results
+  - Skip already-translated content on re-crawl
+  - TTL-based cache invalidation
 
-#### Integration Tests
-- [ ] Run `matome crawl` with configured domain (docs.mistral.ai)
-  - [ ] Verify HTML fetching works
-  - [ ] Verify sitemap parsing works
-  - [ ] Verify extraction works
-  - [ ] Verify translation works
-  - [ ] Verify storage works
-
-#### Feature Tests
-- [ ] **Glossary test**:
-  - [ ] Configure `glossary.toml` in `matome.toml`
-  - [ ] Run crawl with glossary enabled
-  - [ ] Verify terms like "compiler" → "コンパイラ"
-
-- [ ] **Search test**:
-  - [ ] Index some articles
-  - [ ] Search in Japanese
-  - [ ] Verify results are ranked correctly
-
-- [ ] **Web UI test**:
-  - [ ] `/` - Article list
-  - [ ] `/article/:id` - View translated article
-  - [ ] `/article/:id/original` - View original English ✅
-  - [ ] `/search?q=...` - Full-text search
-
-- [ ] **Incremental crawl test**:
-  - [ ] Run initial crawl
-  - [ ] Run `matome crawl --incremental`
-  - [ ] Verify existing articles not re-fetched
-
-- [ ] **Multi-language test**:
-  - [ ] Change `target-lang` to `zh`
-  - [ ] Verify Chinese translation
-  - [ ] Verify Chinese glossary works
-
----
-
-### 🟢 P2: Documentation
-
-- [ ] Add README.md:
-  - [ ] Installation instructions
-  - [ ] Basic usage (`init`, `add`, `crawl`, `serve`)
-  - [ ] Configuration options
-  - [ ] Glossary format
-  - [ ] Troubleshooting
-
-- [ ] Update SPEC.md:
-  - [ ] Document multilanguage translation
-  - [ ] Document glossary system
-
----
-
-### 🟢 P2: Performance
-
-- [ ] Add progress indicators during crawl
-  - [ ] Show pages crawled / total
-  - [ ] Show pages translated / total
-  - [ ] ETA calculation
-
-- [ ] Add cancellation support (Ctrl+C handling)
-
-- [ ] Tune concurrency settings
-  - [ ] Default of 8 may be too high for some APIs
-  - [ ] Add dynamic adjustment
-
----
-
-### 🟢 P2: Missing Features
-
-#### Domain Filtering in Web UI
-- [ ] Add `?domain=<domain>` query parameter
-- [ ] Filter articles in handlers
-- [ ] Update UI to show domain filter
-
-#### Article Deletion
-- [ ] Add `matome delete <id>` CLI command
-- [ ] Add delete button in web UI
-- [ ] Remove from search index
+- [ ] **Pagination**
+  - Add pagination for large article lists
+  - Infinite scroll option
 
 #### Statistics Dashboard
+
 - [ ] Web-based dashboard at `/stats`
-- [ ] Show crawl history
-- [ ] Show error rates
-
-#### Caching
-- [ ] Cache translation results
-- [ ] Skip already-translated content
+- [ ] Total articles, domains
+- [ ] Storage usage
+- [ ] Last crawl time
 
 ---
 
-## 📊 Progress Tracking
+### 🟡 P2: Documentation
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Foundation | ✅ 100% | |
-| Crawler | ✅ 100% | |
-| Extraction | ✅ 100% | |
-| Translation | ✅ 100% | Glossary integrated |
-| Storage | ✅ 100% | SQLite + Tantivy |
-| Search | ✅ 100% | Full-text search working |
-| Web UI | ✅ 100% | All endpoints working |
-| Code Quality | ⚠️ ~85% | 20 warnings (P1) |
-| Tests | ❌ 0% | Integration tests needed |
-| Documentation | ⚠️ 50% | PLAN.md updated, no README |
+#### README.md
 
----
+- [ ] Installation (cargo install, from source)
+- [ ] Quick start guide (init → add → crawl → serve)
+- [ ] Configuration options
+- [ ] Glossary format
+- [ ] Troubleshooting (common errors)
+- [ ] Screenshots of new UI
 
-## 🗂️ Files Changed (2026-04-08)
+#### Update SPEC.md
 
-### P0-1: Glossary Integration
-- `src/pipeline/mod.rs` - Added `Glossary` field, loading, and application
-- `src/pipeline/glossary.rs` - Added `has_terms()`, `term_count()` methods
-
-### P0-2: Search Engine Integration
-- `src/db/mod.rs` - Exported `SearchEngine`, `SearchResult`
-- `src/db/search.rs` - Fixed `index_document()` signature
-- `src/db/sqlite.rs` - Added `get_articles_by_urls()` method
-- `src/pipeline/mod.rs` - Added `SearchEngine`, indexing call
-- `src/web/mod.rs` - Added `search_engine` to `AppState`
-- `src/web/handlers.rs` - Search uses full-text search with fallback
-
-### Bug Fix
-- `src/web/handlers.rs` - Fixed toggle bug
+- [ ] Document new web UI architecture
+- [ ] Document search features (⌘K, HTMX)
+- [ ] Document domain filtering
 
 ---
 
-## 📅 Session Log
+### 🟠 P1: Testing
 
-### 2026-04-08
+#### Integration Testing
 
-**Completed**:
-- ✅ Fixed Web UI Toggle Bug
-- ✅ Integrated Glossary into translation pipeline
-- ✅ Integrated Search Engine into pipeline and web handlers
-- ✅ Updated PLAN.md and TODO.md
-- ✅ Committed and pushed to GitHub
+- [ ] Full pipeline test with real domain
+- [ ] Incremental crawl test
+- [ ] Search functionality test
+- [ ] UI interaction test (sidebar, search modal)
 
 ---
 
-## 🎯 Quick Wins (Remaining)
+## 📊 Progress Matrix
 
-1. **Remove 20 build warnings** (~30 min)
-   - Most are simple `#[allow(dead_code)]` or single-line removals
+| Component | Code | Tests | Docs | Status |
+|-----------|:----:|:-----:|:----:|:------:|
+| Foundation | ✅ | ✅ | ✅ | Complete |
+| Crawler | ✅ | ⚠️ | ⚠️ | Integration tests needed |
+| Extractor | ✅ | ✅ | ✅ | Complete |
+| Translator | ✅ | ⚠️ | ✅ | Complete |
+| Storage | ✅ | ⚠️ | ✅ | Complete |
+| Search | ✅ | ⚠️ | ✅ | Complete |
+| **Web UI** | ✅ | ⚠️ | ⚠️ | **New: Redesigned** |
 
-2. **Add basic integration test** (~1 hour)
-   - Mock Ollama endpoint
-   - Test full pipeline
-
-3. **Create README.md** (~30 min)
-   - Basic usage documentation
+**Legend**: ✅ Done | ⚠️ Partial | ❌ Missing
 
 ---
 
-*This file is updated after each session. Check for new items and mark completed ones.*
+## 🗂️ File Change Log
+
+### 2026-04-08: Web UI Redesign
+
+**New Files Created**:
+
+| File | Description |
+|------|-------------|
+| `templates/index.html` | Main portal with sidebar navigation |
+| `templates/article.html` | Article reading view with sidebar |
+| `templates/search.html` | Search results page |
+
+**Files Modified**:
+
+| File | Changes |
+|------|---------|
+| `src/web/handlers.rs` | Added `domain_articles`, `get_domain_nav`, `get_domain_count`, template rendering with variables |
+| `src/web/mod.rs` | Added `/domain/:domain` route |
+| `src/web/templates.rs` | Added `render_template` helper |
+| `PLAN.md` | Updated with new UI architecture |
+| `TODO.md` | Updated with completed tasks |
+
+**Design Features Added**:
+- Fixed sidebar with logo, search button, navigation
+- Domain filtering via sidebar links
+- Quick search modal (⌘K) with HTMX live search
+- Responsive design with mobile menu toggle
+- Warm cream palette with orange/blue accents
+- Custom Google Fonts (Crimson Pro, IBM Plex Sans, JetBrains Mono)
+
+---
+
+## 🏃 Recommended Next Steps
+
+1. **Add README.md** - User documentation with screenshots
+2. **Integration Testing** - Test full pipeline with real domain
+3. **Delete Functionality** - Article management
+4. **Dark Mode** - Theme toggle
+
+---
+
+## 📝 Notes
+
+### Current Architecture
+
+The Web UI follows a documentation portal pattern inspired by Stripe Docs, Vercel Docs:
+- Fixed sidebar for navigation
+- Main content area with article grid or reading view
+- Quick search modal overlay
+- Responsive for mobile devices
+
+### Test Coverage
+
+Current: 11 unit tests  
+Target: 20-30 tests (unit + integration)
+
+---
+
+*This file is updated after each session.*

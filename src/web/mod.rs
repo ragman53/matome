@@ -17,6 +17,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum ServerError {
     #[error("HTTP error: {0}")]
     Http(String),
@@ -67,6 +68,7 @@ pub fn create_app(data_dir: PathBuf) -> Result<Router, ServerError> {
         .route("/search", get(handlers::search))
         .route("/search", post(handlers::search_post))
         .route("/domains", get(handlers::domains))
+        .route("/domain/:domain", get(handlers::domain_articles))
         .route("/api/articles", get(handlers::api_articles))
         .layer(cors)
         .with_state(state);
