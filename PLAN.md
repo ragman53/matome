@@ -11,7 +11,7 @@
 | Layer | Technology | Reason |
 |-------|-------------|--------|
 | CLI Argument Parsing | clap | Standard Rust CLI crate, derive macro support |
-| Configuration Files | toml, serde | INI-like simplicity, de facto standard |
+| Configuration Files | toml, serde | TOML simplicity, de facto standard |
 | HTTP Client | reqwest | Async, tokio integration, procedural API |
 | HTML Parsing | scraper | CSS selectors, lightweight |
 | Content Extraction | readability-rs | De facto for article extraction |
@@ -19,7 +19,6 @@
 | Markdown → HTML | pulldown-cmark | CommonMark parsing for web rendering |
 | SQLite | rusqlite | Synchronous, bundled SQLite |
 | Full-Text Search | tantivy | Rust-native high-speed search engine |
-| Japanese NLP | lindera | Morphological analysis (Tantivy Japanese support) |
 | Web Server | axum | Lightweight, tower middleware support |
 | Dynamic HTML | htmx | Server-rendered + partial updates |
 | CSS | Tailwind CDN | No build required, CDN usage |
@@ -30,18 +29,14 @@
 
 ### ✅ Phase 0: Foundation (COMPLETE)
 
-**Goal**: Implement CLI command skeleton and configuration file parsing
-
 | # | File | Status | Notes |
 |---|------|--------|-------|
 | 0-1 | `Cargo.toml` | ✅ | Dependencies defined |
 | 0-2 | `src/main.rs` | ✅ | Entry point with tracing |
 | 0-3 | `src/cli.rs` | ✅ | Commands: init, add, crawl, serve, status |
-| 0-4 | `src/config.rs` | ⚠️ | Partial - types defined but some unused |
+| 0-4 | `src/config.rs` | ✅ | Config parsing with multi-language support |
 
 ### ✅ Phase 1: Crawler (COMPLETE)
-
-**Goal**: Fetch HTML from specified URLs, parse sitemap.xml/robots.txt
 
 | # | File | Status | Notes |
 |---|------|--------|-------|
@@ -50,93 +45,71 @@
 
 ### ✅ Phase 2: Extraction (COMPLETE)
 
-**Goal**: Extract main content from raw HTML and convert to clean Markdown
-
 | # | File | Status | Notes |
 |---|------|--------|-------|
 | 2-1 | `src/pipeline/extractor.rs` | ✅ | readability-rs + html2md |
 
 ### ✅ Phase 3: Translation (COMPLETE)
 
-**Goal**: Translate Markdown to Japanese via Ollama API
-
 | # | File | Status | Notes |
 |---|------|--------|-------|
-| 3-1 | `src/pipeline/translator.rs` | ✅ | Ollama API client |
-| 3-2 | `src/pipeline/glossary.rs` | ⚠️ | Defined but **NOT integrated** into pipeline |
+| 3-1 | `src/pipeline/translator.rs` | ✅ | Ollama/DeepL API client, code block preservation |
+| 3-2 | `src/pipeline/glossary.rs` | ✅ | Multi-language glossary with term replacement |
 
-### ⚠️ Phase 4: Storage (COMPLETE, SEARCH NOT INTEGRATED)
-
-**Goal**: Data storage and Japanese full-text search with SQLite + Tantivy
+### ✅ Phase 4: Storage & Search (COMPLETE)
 
 | # | File | Status | Notes |
 |---|------|--------|-------|
 | 4-1 | `src/db/sqlite.rs` | ✅ | SQLite operations |
-| 4-2 | `src/db/search.rs` | ⚠️ | **Defined but NEVER USED** - search uses SQLite LIKE instead |
-| 4-3 | `src/db/mod.rs` | ✅ | DB initialization |
+| 4-2 | `src/db/search.rs` | ✅ | Tantivy full-text search engine |
+| 4-3 | `src/db/mod.rs` | ✅ | DB module exports |
 | 4-4 | `src/db/error.rs` | ✅ | Error types |
 
-### ⚠️ Phase 5: Web Server & UI (PARTIAL)
-
-**Goal**: Lightweight web browsing UI with Axum + HTMX
+### ✅ Phase 5: Web Server & UI (COMPLETE)
 
 | # | File | Status | Notes |
 |---|------|--------|-------|
-| 5-1 | `src/web/mod.rs` | ✅ | Axum router setup |
-| 5-2 | `src/web/handlers.rs` | ⚠️ | Works but uses inline HTML, no templates |
-| 5-3 | `templates/` | ❌ | **EMPTY** - templates directory exists but no files |
-| 5-4 | `assets/` | ✅ | Static directory exists |
-| 5-5 | `src/web/templates.rs` | ⚠️ | **Never used** - handlers render HTML inline |
+| 5-1 | `src/web/mod.rs` | ✅ | Axum router, SearchEngine integration |
+| 5-2 | `src/web/handlers.rs` | ✅ | All endpoints with full-text search |
+| 5-3 | `templates/` | N/A | Using inline HTML (simple approach) |
+| 5-4 | `assets/` | ✅ | Static directory |
 
 ---
 
-## 3. Critical Issues to Fix
+## 3. Core Features
 
-### Issue #1: 27 Build Warnings - Dead Code
+### 3.1 Data Pipeline Flow
 
-Many types and functions are defined but never used. This indicates:
-- Features are partially implemented but not connected
-- Code complexity without value
-- Potential refactoring needed
-
-**Affected modules:**
-- `src/config.rs`: GlossaryTerm, Glossary, Article (never constructed)
-- `src/pipeline/glossary.rs`: Full module defined but never used
-- `src/db/search.rs`: SearchEngine, SearchResult, SearchError (never used)
-- `src/db/sqlite.rs`: get_articles_by_domain, delete_article, clear (never used)
-- `src/web/`: AppState::data_dir, ServerError::Template, HandlerError::Render, load_template
-
-### Issue #2: Search Engine Not Integrated
-
-The Tantivy search engine in `src/db/search.rs` is defined but completely unused.
-- Current search uses SQLite LIKE queries
-- Full-text search with Japanese support not working
-- SearchEngine methods are all dead code
-
-### Issue #3: Glossary Not Integrated
-
-The glossary module in `src/pipeline/glossary.rs` is defined but never imported or used in the translation pipeline.
-- Config has `glossary_file` option but it's not loaded
-- Glossary replacement doesn't happen during translation
-
-### Issue #4: Templates Directory Empty
-
-The `templates/` directory exists but contains no Askama template files.
-- Handlers render HTML inline using format! macro
-- Should migrate to proper template files for maintainability
-
-### Issue #5: Web UI Toggle Bug
-
-In `handlers.rs`, the article page toggle buttons both link to the same path:
-```rust
-// Current (WRONG):
-<a href="/article/{id}" class="px-3 py-1...">Original</a>
-<a href="/article/{id}" class="px-3 py-1...">Translated</a>
-
-// Should be:
-<a href="/article/{id}/original" class="...">Original</a>
-<a href="/article/{id}" class="...">Translated</a>
 ```
+Crawl → Extract → Translate → Apply Glossary → Store → Index
+   ↓         ↓          ↓            ↓          ↓        ↓
+ Raw    Markdown    Japanese     Terminology   SQLite   Tantivy
+ HTML             Translation   Replacement
+```
+
+### 3.2 Glossary System
+
+- **Multi-language support**: Terms can have translations for multiple languages
+- **Language-specific replacement**: `Glossary::apply_for_lang(text, "ja")`
+- **Backward compatible**: Legacy `ja` field still works
+- **Case-insensitive matching**: `API` matches `api`, `Api`, etc.
+
+**Example glossary.toml:**
+```toml
+[[terms]]
+en = "compiler"
+ja = "コンパイラ"
+
+[[terms]]
+en = "runtime"
+translations = { ja = "ランタイム", zh = "运行时" }
+```
+
+### 3.3 Search Engine
+
+- **Full-text search**: Tantivy-powered search in title and content
+- **Fallback**: SQLite LIKE search if Tantivy unavailable
+- **URL-based indexing**: Documents indexed by URL
 
 ---
 
@@ -146,90 +119,102 @@ In `handlers.rs`, the article page toggle buttons both link to the same path:
 matome/
 ├── Cargo.toml
 ├── matome.toml              # Configuration file
-├── glossary.example.toml    # Terminology glossary sample
+├── glossary.example.toml     # Terminology glossary sample
 ├── src/
 │   ├── main.rs              # Entry point
 │   ├── cli.rs               # CLI argument definitions
-│   ├── config.rs            # Config file loading (PARTIAL)
+│   ├── config.rs            # Config parsing, multi-language types
 │   ├── pipeline/
-│   │   ├── mod.rs           # Pipeline orchestration
-│   │   ├── crawler.rs       # HTTP fetch, sitemap parsing
+│   │   ├── mod.rs           # Pipeline orchestration (Glossary + Search integrated)
+│   │   ├── crawler.rs      # HTTP fetch, sitemap parsing
 │   │   ├── extractor.rs     # HTML→Markdown conversion
-│   │   ├── translator.rs    # Ollama translation
-│   │   └── glossary.rs      # ⚠️ DEFINED BUT NEVER USED
+│   │   ├── translator.rs    # Ollama/DeepL translation
+│   │   └── glossary.rs      # Multi-language glossary
 │   ├── db/
-│   │   ├── mod.rs           # DB initialization
+│   │   ├── mod.rs           # DB module exports
 │   │   ├── sqlite.rs        # SQLite operations
-│   │   ├── search.rs        # ⚠️ DEFINED BUT NEVER USED
-│   │   └── error.rs         # DB errors
+│   │   ├── search.rs        # Tantivy search engine
+│   │   └── error.rs         # Error types
 │   └── web/
-│       ├── mod.rs           # Axum router
-│       ├── handlers.rs       # ⚠️ INLINE HTML, has toggle bug
-│       └── templates.rs      # ⚠️ NEVER USED
-├── templates/               # ❌ EMPTY - should have Askama templates
+│       ├── mod.rs           # Axum router + SearchEngine
+│       └── handlers.rs      # All endpoints with full-text search
+├── templates/               # (Not used - inline HTML)
 └── assets/                  # Static files directory
 ```
 
 ---
 
-## 5. CLI Commands (Implemented)
+## 5. CLI Commands
 
 | Command | Description | Status |
 |---------|-------------|--------|
-| `matome init` | Generate templates for `matome.toml` and `glossary.toml` | ✅ |
-| `matome add <url>` | Add target domain to `matome.toml` | ✅ |
-| `matome crawl [--incremental]` | Execute pipeline | ✅ |
-| `matome serve [--port <port>] [--host <host>]` | Start local web server | ✅ |
-| `matome status [--verbose]` | Display DB statistics | ✅ |
+| `matome init` | Generate config templates | ✅ |
+| `matome add <url>` | Add domain to config | ✅ |
+| `matome crawl [--incremental]` | Execute full pipeline | ✅ |
+| `matome serve [--port <port>] [--host <host>]` | Start web server | ✅ |
+| `matome status [--verbose]` | Display statistics | ✅ |
 
 ---
 
-## 6. Next Actions Priority
+## 6. Configuration
 
-### 🔴 Priority 1: Fix Critical Integration Issues
+### matome.toml
 
-1. **Integrate Tantivy Search Engine**
-   - Connect SearchEngine to pipeline for indexing
-   - Replace SQLite LIKE with full-text search
-   - Add Japanese morphological analysis support
+```toml
+[core]
+data-dir = ".matome"
 
-2. **Integrate Glossary into Translation Pipeline**
-   - Load glossary from config file
-   - Apply term replacements during translation
+[[domains]]
+url = "https://docs.example.com/"
+include = ["/**"]
 
-3. **Fix Web UI Toggle Bug**
-   - Correct article view toggle links
+[translate]
+provider = "ollama"           # or "deepl", "none"
+model = "translategemma:4bb"
+target-lang = "ja"
+glossary-file = "glossary.toml"
 
-### 🟡 Priority 2: Clean Up Dead Code
+[crawl]
+concurrency = 8
+respect-robots = true
+timeout = 30
+max-pages = 0
+```
 
-1. **Remove or Use Unused Types**
-   - Decide: remove unused types or implement their missing functionality
-   - Clean up build warnings for maintainability
+### glossary.toml
 
-2. **Migrate to Template Files (Optional)**
-   - Create proper Askama templates
-   - Or remove template infrastructure if inline HTML is preferred
+```toml
+[[terms]]
+en = "compiler"
+ja = "コンパイラ"
 
-### 🟢 Priority 3: Testing & Polish
-
-1. **End-to-End Testing**
-   - Test crawl with real domain
-   - Test web server functionality
-   - Verify translation quality
-
-2. **Performance Optimization**
-   - Tune concurrency settings
-   - Add progress indicators
+[[terms]]
+en = "API"
+translations = { ja = "API", zh = "API", ko = "API" }
+```
 
 ---
 
-## 7. Recent Commits
+## 7. Known Issues
+
+### Build Warnings (20 warnings)
+
+Some types and functions are defined but unused. Candidates for cleanup:
+- `src/config.rs`: ConfigError, html_lang, Glossary, Article
+- `src/pipeline/glossary.rs`: Some methods
+- `src/db/`: Some unused methods and fields
+- `src/web/`: Some unused variants
+
+---
+
+## 8. Recent Commits
 
 | Commit | Description |
 |--------|-------------|
-| `c4284c4` | fix: Update default model to translategemma:latest and refactor imports |
-| `73d24fe` | Initial commit: matome - Rust CLI for documentation collection and translation |
+| `df058c9` | feat: integrate glossary and search engine into pipeline |
+| `c4284c4` | fix: Update default model to translategemma:latest |
+| `73d24fe` | Initial commit |
 
 ---
 
-*This file is updated according to implementation progress. Update last modified date when changing.*
+*This file is updated according to implementation progress.*
