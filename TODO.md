@@ -109,14 +109,15 @@
 const EMPTY_PATTERN: &str = "";
 ```
 
-#### [ ] 4-2. コードスニペット取得対応
+#### [x] 4-2. コードスニペット取得対応 ✅
 
 **ファイル**: `src/pipeline/extractor.rs`  
-**問題**: ページ内のコードブロックが取得できていない
-
-**対応**:
-- [ ] 現在の取得スコープ調査
-- [ ] extractor усиление или scoped拡大
+**対応済み**:
+- [x] `extract_text_recursive()` でネストした<span>要素からテキスト抽出
+- [x] Docusaurus用セレクタ追加: `[data-page-content]`, `.theme-doc-markdown`, `.docMainContainer`
+- [x] MkDocs用セレクタ追加: `.md-content`, `.mkdocs-content`
+- [x] 一般用セレクタ追加: `.markdown-body`, `.documentation-body`
+- [x] テスト追加: ネストスパンテスト、Docusaurusセレクターテスト
 
 ---
 
