@@ -18,7 +18,7 @@ use crate::pipeline::glossary::Glossary;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::Semaphore;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 #[derive(Error, Debug)]
 pub enum PipelineError {
@@ -37,6 +37,7 @@ pub enum PipelineError {
 /// Page data from crawler
 #[derive(Debug, Clone)]
 pub struct RawPage {
+    #[allow(dead_code)] // Future: debugging, logging
     pub url: String,
     pub html: String,
 }
@@ -44,6 +45,7 @@ pub struct RawPage {
 /// Extracted page data
 #[derive(Debug, Clone)]
 pub struct ExtractedPage {
+    #[allow(dead_code)] // Future: debugging, logging
     pub url: String,
     pub title: String,
     pub description: Option<String>,
@@ -53,6 +55,7 @@ pub struct ExtractedPage {
 /// Translated page data
 #[derive(Debug, Clone)]
 pub struct TranslatedPage {
+    #[allow(dead_code)] // Future: debugging, logging
     pub url: String,
     pub title: String,
     pub description: Option<String>,
@@ -62,7 +65,7 @@ pub struct TranslatedPage {
 }
 
 /// Pipeline execution report
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct PipelineReport {
     pub pages_crawled: usize,
     pub pages_extracted: usize,
@@ -83,6 +86,18 @@ pub struct Pipeline {
     concurrency: Arc<Semaphore>,
 }
 
+/// Context for processing a single page
+struct PageProcessContext<'a> {
+    extractor: Extractor,
+    translator: Option<Translator>,
+    glossary: Option<Glossary>,
+    search_engine: Option<Arc<SearchEngine>>,
+    db: &'a Database,
+    semaphore: Arc<Semaphore>,
+    domain_name: String,
+    target_lang: String,
+}
+
 impl Pipeline {
     /// Create a new pipeline instance
     pub async fn new(config: &Config) -> Result<Self, PipelineError> {
@@ -91,225 +106,205 @@ impl Pipeline {
             .map_err(|e| PipelineError::Storage(e.to_string()))?;
 
         let crawler = Crawler::new(&config)?;
-        let extractor = Extractor::new();
-
-        let translator = if config.translate.provider != "none" {
-            Some(Translator::new(&config).map_err(|e| PipelineError::Translate(e.to_string()))?)
-        } else {
-            None
-        };
-
-        // Load glossary if configured
-        let glossary = if let Some(glossary_file) = &config.translate.glossary_file {
-            let path = std::path::PathBuf::from(glossary_file);
-            match Glossary::load(&path) {
-                Ok(g) if g.has_terms() => {
-                    info!("Loaded glossary with {} terms", g.term_count());
-                    Some(g)
-                }
-                Ok(_) => {
-                    info!("Glossary file is empty, skipping");
-                    None
-                }
-                Err(e) => {
-                    warn!("Failed to load glossary: {}, continuing without", e);
-                    None
-                }
-            }
-        } else {
-            None
-        };
-
-        // Initialize search engine
-        let data_dir = std::path::PathBuf::from(&config.core.data_dir);
-        let search_engine = match SearchEngine::new(&data_dir) {
-            Ok(se) => {
-                info!("Search engine initialized");
-                Some(Arc::new(se))
-            }
-            Err(e) => {
-                warn!("Failed to initialize search engine: {}, continuing without", e);
-                None
-            }
-        };
-
+        let translator = Self::init_translator(&config)?;
+        let glossary = Self::load_glossary(&config)?;
+        let search_engine = Self::init_search_engine(&config)?;
         let concurrency = Arc::new(Semaphore::new(config.crawl.concurrency));
 
-        Ok(Self {
-            config,
-            crawler,
-            extractor,
-            translator,
-            glossary,
-            search_engine,
-            db,
-            concurrency,
-        })
+        Ok(Self { config, crawler, extractor: Extractor::new(), translator, glossary, search_engine, db, concurrency })
+    }
+
+    fn init_translator(config: &Arc<Config>) -> Result<Option<Translator>, PipelineError> {
+        if config.translate.provider != "none" {
+            Ok(Some(Translator::new(config).map_err(|e| PipelineError::Translate(e.to_string()))?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn load_glossary(config: &Arc<Config>) -> Result<Option<Glossary>, PipelineError> {
+        let Some(glossary_file) = &config.translate.glossary_file else { return Ok(None); };
+        let path = std::path::PathBuf::from(glossary_file);
+        match Glossary::load(&path) {
+            Ok(g) if g.has_terms() => { info!("Loaded glossary with {} terms", g.term_count()); Ok(Some(g)) }
+            Ok(_) => { info!("Glossary file is empty, skipping"); Ok(None) }
+            Err(e) => { warn!("Failed to load glossary: {}, continuing without", e); Ok(None) }
+        }
+    }
+
+    fn init_search_engine(config: &Arc<Config>) -> Result<Option<Arc<SearchEngine>>, PipelineError> {
+        let data_dir = std::path::PathBuf::from(&config.core.data_dir);
+        match SearchEngine::new(&data_dir) {
+            Ok(se) => { info!("Search engine initialized"); Ok(Some(Arc::new(se))) }
+            Err(e) => { warn!("Failed to initialize search engine: {}, continuing without", e); Ok(None) }
+        }
     }
 
     /// Run the full pipeline
     pub async fn run(&mut self, incremental: bool) -> Result<PipelineReport, PipelineError> {
         let mut report = PipelineReport::default();
-
-        // Clone domain info to avoid borrow conflicts
-        let domain_infos: Vec<(String, Vec<String>)> = self.config.domains
-            .iter()
-            .map(|d| (d.url.clone(), d.include.clone()))
-            .collect();
-        
-        // Process each domain
-        for (url, include) in domain_infos {
-            let domain = Domain { url: url.clone(), include };
-            info!("Processing domain: {}", domain.url);
-
+        for domain in self.config.domains.clone() {
             let domain_report = self.process_domain(&domain, incremental).await;
-            domain_report.errors.iter().for_each(|e| warn!("{}", e));
-            
-            // Accumulate stats
-            report.pages_crawled += domain_report.pages_crawled;
-            report.pages_extracted += domain_report.pages_extracted;
-            report.pages_translated += domain_report.pages_translated;
-            report.pages_stored += domain_report.pages_stored;
-            report.errors.extend(domain_report.errors);
+            report += domain_report;
         }
-
         Ok(report)
     }
 
     /// Process a single domain
-    async fn process_domain(
-        &mut self,
-        domain: &Domain,
-        incremental: bool,
-    ) -> PipelineReport {
-        let mut report = PipelineReport::default();
-
-        // Get existing URLs if incremental
-        let existing_urls = if incremental {
-            self.db.get_urls_by_domain(&domain.name())
-                .unwrap_or_default()
-        } else {
-            std::collections::HashSet::new()
-        };
-
-        // Crawl domain
+    async fn process_domain(&self, domain: &Domain, incremental: bool) -> PipelineReport {
+        let existing_urls = self.get_existing_urls(domain, incremental);
         let raw_pages = match self.crawler.crawl(domain).await {
-            Ok(pages) => {
-                report.pages_crawled = pages.len();
-                pages
-            }
-            Err(e) => {
-                report.errors.push(format!("Crawl error for {}: {}", domain.url, e));
-                return report;
-            }
+            Ok(pages) => pages,
+            Err(e) => return PipelineReport { errors: vec![format!("Crawl error for {}: {}", domain.url, e)], ..Default::default() },
         };
 
-        // Process pages concurrently
-        let semaphore = self.concurrency.clone();
-        let translator = self.translator.clone();
-        let glossary = self.glossary.clone();
-        let search_engine = self.search_engine.clone();
-        let db = &self.db;
-        let extractor = self.extractor.clone();
-        let domain_name = domain.name();
-        let target_lang = self.config.translate.target_lang.clone();
+        let ctx = PageProcessContext {
+            extractor: self.extractor.clone(),
+            translator: self.translator.clone(),
+            glossary: self.glossary.clone(),
+            search_engine: self.search_engine.clone(),
+            db: &self.db,
+            semaphore: self.concurrency.clone(),
+            domain_name: domain.normalized_name(self.config.crawl.treat_subdomains_same),
+            target_lang: self.config.translate.target_lang.clone(),
+        };
 
-        let futures = raw_pages.into_iter().filter(|page| {
-            // Skip existing URLs in incremental mode
-            if incremental {
-                !existing_urls.contains(&page.url)
-            } else {
-                true
-            }
-        }).map(|raw_page| {
-            let extractor = extractor.clone();
-            let translator = translator.clone();
-            let glossary = glossary.clone();
-            let search_engine = search_engine.clone();
-            let db = db;
-            let semaphore = semaphore.clone();
-            let domain_name = domain_name.clone();
-            let target_lang = target_lang.clone();
+        let results = Self::process_pages(raw_pages, existing_urls, incremental, ctx).await;
+        Self::aggregate_results(results)
+    }
 
+    fn get_existing_urls(&self, domain: &Domain, incremental: bool) -> std::collections::HashSet<String> {
+        if incremental { self.db.get_urls_by_domain(&domain.normalized_name(self.config.crawl.treat_subdomains_same)).unwrap_or_default() } else { std::collections::HashSet::new() }
+    }
+
+    async fn process_pages(raw_pages: Vec<RawPage>, existing_urls: std::collections::HashSet<String>, incremental: bool, ctx: PageProcessContext<'_>) -> Vec<Result<(), PipelineError>> {
+        let filtered: Vec<RawPage> = if incremental { raw_pages.into_iter().filter(|p| !existing_urls.contains(&p.url)).collect() } else { raw_pages };
+        let total = filtered.len();
+        
+        if total == 0 {
+            info!("No new pages to process");
+            return Vec::new();
+        }
+        
+        info!("Processing {} pages (extract + translate + store)...", total);
+        
+        let futures = filtered.into_iter().enumerate().map(|(i, page)| {
+            let ctx = PageProcessContext {
+                extractor: ctx.extractor.clone(),
+                translator: ctx.translator.clone(),
+                glossary: ctx.glossary.clone(),
+                search_engine: ctx.search_engine.clone(),
+                db: ctx.db,
+                semaphore: ctx.semaphore.clone(),
+                domain_name: ctx.domain_name.clone(),
+                target_lang: ctx.target_lang.clone(),
+            };
             async move {
-                let _permit = semaphore.acquire().await;
-
-                // Extract markdown
-                let extracted = match extractor.extract(&raw_page.html, &raw_page.url) {
-                    Ok(extracted) => extracted,
-                    Err(e) => return Err(PipelineError::Extract(e.to_string())),
-                };
-
-                // Translate
-                let mut translated_md = if let Some(ref translator) = translator {
-                    match translator.translate(&extracted.markdown).await {
-                        Ok(tmd) => tmd,
-                        Err(_e) => {
-                            // Fall back to original if translation fails
-                            extracted.markdown.clone()
-                        }
-                    }
-                } else {
-                    extracted.markdown.clone()
-                };
-
-                // Apply glossary replacements if configured
-                if let Some(ref gloss) = glossary {
-                    translated_md = gloss.apply_for_lang(&translated_md, &target_lang);
-                }
-
-                // Store in database
-                let page = TranslatedPage {
-                    url: raw_page.url.clone(),
-                    title: extracted.title.clone(),
-                    description: extracted.description.clone(),
-                    original_md: extracted.markdown,
-                    translated_md: translated_md.clone(),
-                    domain: domain_name.clone(),
-                };
-
-                if let Err(e) = db.save_article(&page) {
-                    return Err(PipelineError::Storage(e.to_string()));
-                }
-
-                // Index document for full-text search
-                if let Some(ref se) = search_engine {
-                    let url = raw_page.url.clone();
-                    let title = extracted.title.clone();
-                    let content = translated_md.clone();
-                    let domain = domain_name.clone();
-                    if let Err(e) = se.index_document(&url, &title, &content, &domain) {
-                        warn!("Failed to index document: {}", e);
-                    }
-                }
-
-                Ok::<(), PipelineError>(())
+                let i = i + 1;
+                print_process_progress(i, total, &page.url);
+                Self::process_single_page(page, &ctx).await
             }
         });
-
-        // Execute futures
         let results = futures::future::join_all(futures).await;
+        println!(); // Newline after progress
+        results
+    }
 
-        for result in results {
-            match result {
-                Ok(()) => {
-                    report.pages_stored += 1;
-                }
-                Err(e) => {
-                    report.errors.push(e.to_string());
-                }
+    async fn process_single_page(raw_page: RawPage, ctx: &PageProcessContext<'_>) -> Result<(), PipelineError> {
+        let _permit = ctx.semaphore.acquire().await;
+        
+        let extracted = ctx.extractor.extract(&raw_page.html, &raw_page.url)
+            .map_err(|e| PipelineError::Extract(e.to_string()))?;
+        
+        // Skip empty or very small pages
+        if extracted.markdown.len() < 50 {
+            debug!("Skipping empty/small page: {}", raw_page.url);
+            return Ok(());
+        }
+        
+        let translated_md = Self::translate_content(&extracted.markdown, &ctx.translator).await;
+        
+        let final_md = ctx.glossary.as_ref()
+            .map(|g| g.apply_for_lang(&translated_md, &ctx.target_lang))
+            .unwrap_or(translated_md);
+
+        let page = TranslatedPage {
+            url: raw_page.url.clone(),
+            title: extracted.title.clone(),
+            description: extracted.description.clone(),
+            original_md: extracted.markdown,
+            translated_md: final_md.clone(),
+            domain: ctx.domain_name.clone(),
+        };
+
+        ctx.db.save_article(&page).map_err(|e| PipelineError::Storage(e.to_string()))?;
+        
+        if let Some(ref se) = ctx.search_engine {
+            if let Err(e) = se.index_document(&raw_page.url, &extracted.title, &final_md, &ctx.domain_name) {
+                warn!("Failed to index document {}: {}", raw_page.url, e);
             }
         }
+        
+        Ok(())
+    }
 
-        report.pages_extracted = report.pages_stored;
-        report.pages_translated = report.pages_stored;
+    async fn translate_content(content: &str, translator: &Option<Translator>) -> String {
+        let Some(t) = translator else { return content.to_string(); };
+        match t.translate(content).await {
+            Ok(translated) => translated,
+            Err(e) => {
+                warn!("Translation failed, using original: {}", e);
+                content.to_string()
+            }
+        }
+    }
 
-        report
+    fn aggregate_results(results: Vec<Result<(), PipelineError>>) -> PipelineReport {
+        let (successes, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
+        PipelineReport {
+            pages_crawled: successes.len(),
+            pages_extracted: successes.len(),
+            pages_translated: successes.len(),
+            pages_stored: successes.len(),
+            errors: errors.into_iter().filter_map(Result::err).map(|e| e.to_string()).collect(),
+        }
     }
 }
 
-impl Extractor {
-    fn clone(&self) -> Self {
-        Extractor::new()
+impl Default for PipelineReport {
+    fn default() -> Self {
+        Self { pages_crawled: 0, pages_extracted: 0, pages_translated: 0, pages_stored: 0, errors: Vec::new() }
     }
+}
+
+impl std::ops::AddAssign for PipelineReport {
+    fn add_assign(&mut self, rhs: Self) {
+        self.pages_crawled += rhs.pages_crawled;
+        self.pages_extracted += rhs.pages_extracted;
+        self.pages_translated += rhs.pages_translated;
+        self.pages_stored += rhs.pages_stored;
+        self.errors.extend(rhs.errors);
+    }
+}
+
+/// Print progress for processing pages
+fn print_process_progress(current: usize, total: usize, url: &str) {
+    let display_url = if url.len() > 60 {
+        format!("...{}", &url[url.len()-60..])
+    } else {
+        url.to_string()
+    };
+    
+    let pct = if total > 0 {
+        (current as f64 / total as f64 * 100.0) as u32
+    } else {
+        0
+    };
+    
+    let bar_width = 30;
+    let filled = (current as f64 / total as f64 * bar_width as f64) as usize;
+    let bar: String = "=".repeat(filled) + &"-".repeat(bar_width - filled);
+    
+    print!("\r[{bar}] {pct:3}% ({current}/{total}) {display_url}");
+    std::io::Write::flush(&mut std::io::stdout()).ok();
 }

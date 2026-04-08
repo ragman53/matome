@@ -25,3 +25,4 @@ concurrency = 8
 respect-robots = true
 timeout = 30
 max-pages = 0
+# treat-subdomains-same = true  # Treat docs.example.com as example.com

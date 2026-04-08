@@ -86,11 +86,40 @@ pub struct Domain {
 }
 
 impl Domain {
-    /// Get the domain name from URL
+    /// Get the domain name from URL (raw host)
+    #[allow(dead_code)]
     pub fn name(&self) -> String {
-        url::Url::parse(&self.url)
+        self.normalized_name(false)
+    }
+
+    /// Get normalized domain name, optionally stripping subdomains
+    ///
+    /// When `treat_subdomains_same` is true:
+    /// - "docs.example.com" becomes "example.com"
+    /// - "api.docs.example.com" becomes "example.com"
+    pub fn normalized_name(&self, treat_subdomains_same: bool) -> String {
+        let host = url::Url::parse(&self.url)
             .map(|u| u.host_str().unwrap_or("unknown").to_string())
-            .unwrap_or_else(|_| "unknown".to_string())
+            .unwrap_or_else(|_| "unknown".to_string());
+
+        if treat_subdomains_same {
+            // Split by dots and take the last two parts (e.g., example.com from docs.example.com)
+            let parts: Vec<&str> = host.split('.').collect();
+            if parts.len() >= 2 {
+                let suffix = parts[parts.len() - 2..].join(".");
+                // Check for common TLDs to avoid issues like "co.uk"
+                let known_tlds = ["co", "com", "org", "net", "gov", "edu", "ac"];
+                if known_tlds.contains(&parts[parts.len() - 2]) && parts.len() >= 3 {
+                    parts[parts.len() - 3..].join(".")
+                } else {
+                    suffix
+                }
+            } else {
+                host
+            }
+        } else {
+            host
+        }
     }
 }
 
@@ -196,6 +225,10 @@ pub struct CrawlConfig {
     /// Maximum pages to crawl (0 = unlimited)
     #[serde(default)]
     pub max_pages: usize,
+
+    /// Treat subdomains as the same domain (e.g., docs.example.com = example.com)
+    #[serde(default)]
+    pub treat_subdomains_same: bool,
 }
 
 impl Default for CrawlConfig {
@@ -205,6 +238,7 @@ impl Default for CrawlConfig {
             respect_robots: default_respect_robots(),
             timeout: default_timeout(),
             max_pages: 0,
+            treat_subdomains_same: false,
         }
     }
 }
@@ -328,6 +362,32 @@ mod tests {
             include: vec!["/**".to_string()],
         };
         assert_eq!(domain.name(), "docs.rust-lang.org");
+    }
+
+    #[test]
+    fn test_domain_normalized_name() {
+        // Test with subdomain
+        let domain = Domain {
+            url: "https://docs.example.com".to_string(),
+            include: vec!["/**".to_string()],
+        };
+
+        // Without normalization
+        assert_eq!(domain.normalized_name(false), "docs.example.com");
+
+        // With normalization (strips subdomain)
+        assert_eq!(domain.normalized_name(true), "example.com");
+    }
+
+    #[test]
+    fn test_domain_normalized_name_uk_tld() {
+        // Test with .co.uk TLD
+        let domain = Domain {
+            url: "https://www.example.co.uk".to_string(),
+            include: vec!["/**".to_string()],
+        };
+
+        assert_eq!(domain.normalized_name(true), "example.co.uk");
     }
 
     #[test]
