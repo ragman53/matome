@@ -7,6 +7,7 @@ use scraper::{ElementRef, Html, Selector};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum ExtractorError {
     #[error("HTML parse error: {0}")]
     HtmlParse(String),
@@ -14,6 +15,23 @@ pub enum ExtractorError {
     ContentExtract(String),
     #[error("Markdown conversion error: {0}")]
     MarkdownConvert(String),
+}
+
+/// Try to select first matching element
+fn try_select<'a>(document: &'a Html, selector_str: &str) -> Option<scraper::ElementRef<'a>> {
+    Selector::parse(selector_str)
+        .ok()
+        .and_then(|s| document.select(&s).next())
+}
+
+/// Get non-empty text content from element
+fn get_element_text(elem: scraper::ElementRef) -> Option<String> {
+    let text = elem.text().collect::<String>().trim().to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
 }
 
 /// HTML to Markdown extractor
@@ -28,19 +46,10 @@ impl Extractor {
 
     /// Extract content from HTML and convert to Markdown
     pub fn extract(&self, html: &str, url: &str) -> Result<ExtractedPage, ExtractorError> {
-        // Parse HTML
         let document = Html::parse_document(html);
-
-        // Extract title
         let title = self.extract_title(&document);
-
-        // Extract description
         let description = self.extract_description(&document);
-
-        // Extract main content using readability-like algorithm
         let content_html = self.extract_main_content(&document)?;
-
-        // Convert to Markdown
         let markdown = self.html_to_markdown(&content_html)?;
 
         Ok(ExtractedPage {
@@ -53,61 +62,26 @@ impl Extractor {
 
     /// Extract page title
     fn extract_title(&self, document: &Html) -> String {
-        // Try <title> first
-        if let Ok(title_selector) = Selector::parse("title") {
-            if let Some(title_elem) = document.select(&title_selector).next() {
-                let title = title_elem.text().collect::<String>().trim().to_string();
-                if !title.is_empty() {
-                    return title;
-                }
-            }
-        }
-
-        // Fall back to <h1>
-        if let Ok(h1_selector) = Selector::parse("h1") {
-            if let Some(h1_elem) = document.select(&h1_selector).next() {
-                let title = h1_elem.text().collect::<String>().trim().to_string();
-                if !title.is_empty() {
-                    return title;
-                }
-            }
-        }
-
-        "Untitled".to_string()
+        try_select(document, "title")
+            .and_then(|elem| get_element_text(elem))
+            .or_else(|| try_select(document, "h1").and_then(|elem| get_element_text(elem)))
+            .unwrap_or_else(|| "Untitled".to_string())
     }
 
     /// Extract page description
     fn extract_description(&self, document: &Html) -> Option<String> {
-        // Look for meta description
-        if let Ok(meta_selector) = Selector::parse(r#"meta[name="description"]"#) {
-            if let Some(meta_elem) = document.select(&meta_selector).next() {
-                if let Some(content) = meta_elem.value().attr("content") {
-                    let desc = content.trim().to_string();
-                    if !desc.is_empty() {
-                        return Some(desc);
-                    }
-                }
-            }
-        }
-
-        // Try og:description
-        if let Ok(og_selector) = Selector::parse(r#"meta[property="og:description"]"#) {
-            if let Some(og_elem) = document.select(&og_selector).next() {
-                if let Some(content) = og_elem.value().attr("content") {
-                    let desc = content.trim().to_string();
-                    if !desc.is_empty() {
-                        return Some(desc);
-                    }
-                }
-            }
-        }
-
-        None
+        try_select(document, r#"meta[name="description"]"#)
+            .and_then(|elem| elem.value().attr("content").map(|s| s.trim().to_string()))
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                try_select(document, r#"meta[property="og:description"]"#)
+                    .and_then(|elem| elem.value().attr("content").map(|s| s.trim().to_string()))
+                    .filter(|s| !s.is_empty())
+            })
     }
 
     /// Extract main content using article-like selection
     fn extract_main_content(&self, document: &Html) -> Result<String, ExtractorError> {
-        // Priority order for content extraction
         let selectors = [
             "article",
             "main",
@@ -121,37 +95,25 @@ impl Extractor {
         ];
 
         for selector_str in &selectors {
-            if let Ok(selector) = Selector::parse(selector_str) {
-                if let Some(elem) = document.select(&selector).next() {
-                    let html_content = elem.html();
-                    if html_content.len() > 200 {
-                        return Ok(html_content);
-                    }
+            if let Some(elem) = try_select(document, selector_str) {
+                let html_content = elem.html();
+                if html_content.len() > 200 {
+                    return Ok(html_content);
                 }
             }
         }
 
-        // Fall back to body
-        if let Ok(body_selector) = Selector::parse("body") {
-            if let Some(body_elem) = document.select(&body_selector).next() {
-                return Ok(body_elem.html());
-            }
-        }
-
-        Err(ExtractorError::ContentExtract(
-            "No content found".to_string(),
-        ))
+        try_select(document, "body")
+            .map(|elem| elem.html())
+            .ok_or_else(|| ExtractorError::ContentExtract("No content found".to_string()))
     }
 
     /// Convert HTML to Markdown
     fn html_to_markdown(&self, html: &str) -> Result<String, ExtractorError> {
         let document = Html::parse_document(html);
         let mut markdown = String::new();
-
-        // Pre-parse table selectors
         let td_sel = Selector::parse("td,th").ok();
         let tr_sel = Selector::parse("tr").ok();
-
         self.process_element(document.root_element(), &mut markdown, 0, &td_sel, &tr_sel);
         Ok(markdown)
     }
@@ -169,181 +131,198 @@ impl Extractor {
 
         match tag_name {
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
-                if !output.ends_with('\n') {
-                    output.push('\n');
-                }
-                let level = tag_name[1..].parse::<usize>().unwrap_or(1);
-                for _ in 0..level {
-                    output.push('#');
-                }
-                output.push(' ');
-                for child in element.children() {
-                    if let Some(text) = child.value().as_text() {
-                        output.push_str(&text.trim());
-                    } else if let Some(elem) = ElementRef::wrap(child) {
-                        self.process_element(elem, output, _indent, td_sel, tr_sel);
-                    }
-                }
-                output.push_str("\n\n");
+                self.process_heading(element, output, tag_name)
             }
-            "p" => {
-                for child in element.children() {
-                    if let Some(text) = child.value().as_text() {
-                        output.push_str(&text.trim());
-                    } else if let Some(elem) = ElementRef::wrap(child) {
-                        self.process_element(elem, output, _indent, td_sel, tr_sel);
-                    }
-                }
-                output.push_str("\n\n");
-            }
-            "a" => {
-                let href = element.value().attr("href").unwrap_or("");
-                for child in element.children() {
-                    if let Some(text) = child.value().as_text() {
-                        if href.is_empty() {
-                            output.push_str(&text.trim());
-                        } else {
-                            output.push_str(&format!("[{}]({})", text.trim(), href));
-                        }
-                    }
-                }
-            }
-            "strong" | "b" => {
-                output.push_str("**");
-                for child in element.children() {
-                    if let Some(text) = child.value().as_text() {
-                        output.push_str(&text.trim());
-                    }
-                }
-                output.push_str("**");
-            }
-            "em" | "i" => {
-                output.push_str("*");
-                for child in element.children() {
-                    if let Some(text) = child.value().as_text() {
-                        output.push_str(&text.trim());
-                    }
-                }
-                output.push_str("*");
-            }
-            "code" => {
-                let is_block = element
-                    .parent()
-                    .and_then(|p| ElementRef::wrap(p))
-                    .map(|e| e.value().name() == "pre")
-                    .unwrap_or(false);
-
-                if is_block {
-                    output.push('\n');
-                    output.push_str("```\n");
-                    for child in element.children() {
-                        if let Some(text) = child.value().as_text() {
-                            output.push_str(text.trim());
-                            output.push('\n');
-                        }
-                    }
-                    output.push_str("```\n");
-                } else {
-                    output.push('`');
-                    for child in element.children() {
-                        if let Some(text) = child.value().as_text() {
-                            output.push_str(&text.trim());
-                        }
-                    }
-                    output.push('`');
-                }
-            }
-            "pre" => {
-                output.push('\n');
-                output.push_str("```\n");
-                for child in element.children() {
-                    if let Some(text) = child.value().as_text() {
-                        output.push_str(text.trim());
-                        output.push('\n');
-                    } else if let Some(inner) = ElementRef::wrap(child) {
-                        if inner.value().name() == "code" {
-                            for grandchild in child.children() {
-                                if let Some(text) = grandchild.value().as_text() {
-                                    output.push_str(text.trim());
-                                    output.push('\n');
-                                }
-                            }
-                        }
-                    }
-                }
-                output.push_str("```\n");
-            }
-            "ul" | "ol" => {
-                let is_ordered = tag_name == "ol";
-                let mut items: Vec<ElementRef> = Vec::new();
-                for child in element.children() {
-                    if let Some(elem) = ElementRef::wrap(child) {
-                        if elem.value().name() == "li" {
-                            items.push(elem);
-                        }
-                    }
-                }
-                for (i, item) in items.iter().enumerate() {
-                    let prefix = if is_ordered {
-                        format!("{}. ", i + 1)
-                    } else {
-                        "- ".to_string()
-                    };
-                    output.push_str(&prefix);
-                    for li_child in item.children() {
-                        if let Some(text) = li_child.value().as_text() {
-                            output.push_str(&text.trim());
-                        } else if let Some(li_elem) = ElementRef::wrap(li_child) {
-                            self.process_element(li_elem, output, _indent + 1, td_sel, tr_sel);
-                        }
-                    }
-                    output.push('\n');
-                }
-                output.push('\n');
-            }
-            "blockquote" => {
-                output.push_str("> ");
-                for child in element.children() {
-                    if let Some(text) = child.value().as_text() {
-                        output.push_str(&text.trim());
-                    }
-                }
-                output.push_str("\n\n");
-            }
-            "br" => {
-                output.push_str("  \n");
-            }
+            "p" => self.process_paragraph(element, output),
+            "a" => self.process_anchor(element, output),
+            "strong" | "b" => self.process_inline_element(element, output, "**"),
+            "em" | "i" => self.process_inline_element(element, output, "*"),
+            "code" => self.process_code(element, output),
+            "pre" => self.process_pre(element, output),
+            "ul" | "ol" => self.process_list(element, output, tag_name),
+            "blockquote" => self.process_blockquote(element, output),
+            "br" => output.push_str("  \n"),
             "hr" => {
                 if !output.ends_with('\n') {
                     output.push('\n');
                 }
                 output.push_str("---\n\n");
             }
-            "img" => {
-                let src = element.value().attr("src").unwrap_or("");
-                let alt = element.value().attr("alt").unwrap_or("");
-                if !src.is_empty() {
-                    output.push_str(&format!("![{}]({})\n", alt, src));
-                }
-            }
-            "table" => {
-                // Simple table conversion
-                self.render_table(element, output, td_sel, tr_sel);
-            }
+            "img" => self.process_image(element, output),
+            "table" => self.render_table(element, output, td_sel, tr_sel),
             "div" | "span" | "section" | "article" | "body" | "html" => {
-                for child in element.children() {
-                    if let Some(elem) = ElementRef::wrap(child) {
-                        self.process_element(elem, output, _indent, td_sel, tr_sel);
+                self.process_children(element, output, td_sel, tr_sel)
+            }
+            _ => self.process_children(element, output, td_sel, tr_sel),
+        }
+    }
+
+    fn process_heading(&self, element: ElementRef, output: &mut String, tag_name: &str) {
+        if !output.ends_with('\n') {
+            output.push('\n');
+        }
+        let level = tag_name[1..].parse::<usize>().unwrap_or(1);
+        for _ in 0..level {
+            output.push('#');
+        }
+        output.push(' ');
+        self.process_text_children(element, output);
+        output.push_str("\n\n");
+    }
+
+    fn process_paragraph(&self, element: ElementRef, output: &mut String) {
+        self.process_text_children(element, output);
+        output.push_str("\n\n");
+    }
+
+    fn process_anchor(&self, element: ElementRef, output: &mut String) {
+        let href = element.value().attr("href").unwrap_or("");
+        self.process_text_children(element, output);
+        if !href.is_empty() {
+            output.push_str(&format!("({})", href));
+        }
+    }
+
+    fn process_inline_element(&self, element: ElementRef, output: &mut String, wrapper: &str) {
+        output.push_str(wrapper);
+        self.process_text_children(element, output);
+        output.push_str(wrapper);
+    }
+
+    fn process_code(&self, element: ElementRef, output: &mut String) {
+        let is_block = element
+            .parent()
+            .and_then(|p| ElementRef::wrap(p))
+            .map(|e| e.value().name() == "pre")
+            .unwrap_or(false);
+
+        if is_block {
+            output.push('\n');
+            output.push_str("```\n");
+            for child in element.children() {
+                if let Some(text) = child.value().as_text() {
+                    output.push_str(text.trim());
+                    output.push('\n');
+                }
+            }
+            output.push_str("```\n");
+        } else {
+            output.push('`');
+            self.process_text_children(element, output);
+            output.push('`');
+        }
+    }
+
+    fn process_pre(&self, element: ElementRef, output: &mut String) {
+        output.push('\n');
+        output.push_str("```\n");
+        for child in element.children() {
+            if let Some(text) = child.value().as_text() {
+                output.push_str(text.trim());
+                output.push('\n');
+            } else if let Some(inner) = ElementRef::wrap(child) {
+                if inner.value().name() == "code" {
+                    for grandchild in child.children() {
+                        if let Some(text) = grandchild.value().as_text() {
+                            output.push_str(text.trim());
+                            output.push('\n');
+                        }
                     }
                 }
             }
-            _ => {
-                for child in element.children() {
-                    if let Some(elem) = ElementRef::wrap(child) {
-                        self.process_element(elem, output, _indent, td_sel, tr_sel);
-                    }
+        }
+        output.push_str("```\n");
+    }
+
+    fn process_list(&self, element: ElementRef, output: &mut String, tag_name: &str) {
+        let is_ordered = tag_name == "ol";
+        for (i, item) in element
+            .children()
+            .filter_map(|c| ElementRef::wrap(c))
+            .filter(|e| e.value().name() == "li")
+            .enumerate()
+        {
+            let prefix = if is_ordered {
+                format!("{}. ", i + 1)
+            } else {
+                "- ".to_string()
+            };
+            output.push_str(&prefix);
+            for li_child in item.children() {
+                if let Some(text) = li_child.value().as_text() {
+                    output.push_str(&text.trim());
+                } else if let Some(li_elem) = ElementRef::wrap(li_child) {
+                    self.process_element(li_elem, output, 0, &None, &None);
                 }
             }
+            output.push('\n');
+        }
+        output.push('\n');
+    }
+
+    fn process_blockquote(&self, element: ElementRef, output: &mut String) {
+        output.push_str("> ");
+        self.process_text_children(element, output);
+        output.push_str("\n\n");
+    }
+
+    fn process_image(&self, element: ElementRef, output: &mut String) {
+        let src = element.value().attr("src").unwrap_or("");
+        let alt = element.value().attr("alt").unwrap_or("");
+        if !src.is_empty() {
+            output.push_str(&format!("![{}]({})\n", alt, src));
+        }
+    }
+
+    fn process_children(
+        &self,
+        element: ElementRef,
+        output: &mut String,
+        td_sel: &Option<Selector>,
+        tr_sel: &Option<Selector>,
+    ) {
+        for child in element.children() {
+            if let Some(elem) = ElementRef::wrap(child) {
+                self.process_element(elem, output, 0, td_sel, tr_sel);
+            }
+        }
+    }
+
+    fn process_text_children(&self, element: ElementRef, output: &mut String) {
+        for child in element.children() {
+            if let Some(text) = child.value().as_text() {
+                output.push_str(&text.trim());
+            } else if let Some(elem) = ElementRef::wrap(child) {
+                self.process_text_element(elem, output);
+            }
+        }
+    }
+
+    fn process_text_element(&self, element: ElementRef, output: &mut String) {
+        match element.value().name() {
+            "a" => {
+                let href = element.value().attr("href").unwrap_or("");
+                self.process_text_children(element, output);
+                if !href.is_empty() {
+                    output.push_str(&format!("({})", href));
+                }
+            }
+            "strong" | "b" => {
+                output.push_str("**");
+                self.process_text_children(element, output);
+                output.push_str("**");
+            }
+            "em" | "i" => {
+                output.push('*');
+                self.process_text_children(element, output);
+                output.push('*');
+            }
+            "code" => {
+                output.push('`');
+                self.process_text_children(element, output);
+                output.push('`');
+            }
+            _ => self.process_text_children(element, output),
         }
     }
 
@@ -359,13 +338,10 @@ impl Extractor {
 
         if let (Some(td_sel), Some(tr_sel)) = (td_sel, tr_sel) {
             for row_elem in table.select(tr_sel) {
-                let mut row: Vec<String> = Vec::new();
-
-                for cell in row_elem.select(td_sel) {
-                    let cell_text: String = cell.text().collect();
-                    row.push(cell_text.trim().to_string());
-                }
-
+                let row: Vec<String> = row_elem
+                    .select(td_sel)
+                    .map(|cell| cell.text().collect::<String>().trim().to_string())
+                    .collect();
                 if !row.is_empty() {
                     rows.push(row);
                 }
@@ -374,8 +350,6 @@ impl Extractor {
 
         if let Some(first_row) = rows.first() {
             let col_count = first_row.len();
-
-            // Header separator
             for _ in 0..col_count {
                 output.push_str("| --- ");
             }
@@ -386,8 +360,6 @@ impl Extractor {
                     output.push_str(&format!("| {} ", cell));
                 }
                 output.push_str("|\n");
-
-                // Header separator after first row
                 if i == 0 {
                     for _ in 0..col_count {
                         output.push_str("| --- ");
