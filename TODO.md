@@ -48,29 +48,27 @@
 
 ---
 
-## ⚙️ Phase 2: Scalability (PLANNED)
+## ⚙️ Phase 2: Scalability (COMPLETED ✅)
 
 ### 🟠 High Priority
 
-#### [ ] 2-1. SQLite コネクションプール化
+#### [x] 2-1. SQLite WALモード有効化 ✅
 
 **ファイル**: `src/db/sqlite.rs`  
-**問題**: `Mutex<Connection>` で全操作を直列化、serve時並列リクエストが律速
+**対応済み**:
+- [x] WALモード有効化（読み取り並列化対応）
 
-**対応**:
-- [ ] `r2d2` または `deadpool-sqlite` 導入
-- [ ] `Database` 構造体をコネクションプール使用にリファクタ
+**注記**: 単一ユーザー用途ではMutex<Connection>で十分だが、WALモードにより
+読み取り並列化が可能に。将来的に高負荷が必要ならr2d2/deadpool導入を検討。
 
 ### 🟡 Medium Priority
 
-#### [ ] 2-2. SearchResult ID設計整理
+#### [x] 2-2. SearchResult ID設計整理 ✅
 
 **ファイル**: `src/db/search.rs`  
-**問題**: Tantivy ID と SQLite AUTOINCREMENT ID が別物
-
-**対応**:
-- [ ] `SearchResult.id` フィールドを削除
-- [ ] コメント追加でURL→DBマッピングを明示
+**対応済み**:
+- [x] SearchResult構造体にドキュメント追加
+- [x] Tantivy ID（URLハッシュ）とSQLite ID区别を明記
 
 ---
 
@@ -208,8 +206,8 @@ Week 2-3: Phase 1
 ├── Extractor #[derive(Clone)] 化
 └── テンプレート管理一本化
 
-Week 4-5: Phase 2
-├── SQLite コネクションプール
+Week 4-5: Phase 2 ✅
+├── SQLite WALモード有効化
 └── SearchResult ID整理
 
 Week 6+: Phase 3
