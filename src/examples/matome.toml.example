@@ -13,7 +13,7 @@ include = ["/**"]
 
 [translate]
 provider = "ollama"
-model = "translategemma:latest"
+model = "translategemma:4b"
 target_lang = "ja"
 glossary_file = "glossary.toml"
 

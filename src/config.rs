@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
 
+/// Configuration error types
+#[allow(dead_code)]
 #[derive(Error, Debug)]
 pub enum ConfigError {
     #[error("IO error: {0}")]
@@ -27,7 +29,7 @@ pub struct Config {
     pub core: CoreConfig,
 
     /// Domains to crawl
-    #[serde(default)]
+    #[serde(default, rename = "domain")]
     pub domains: Vec<Domain>,
 
     /// Translation settings
@@ -129,7 +131,7 @@ fn default_provider() -> String {
 }
 
 fn default_model() -> String {
-    "translategemma:latest".to_string()
+    "translategemma:4b".to_string()
 }
 
 fn default_target_lang() -> String {
@@ -166,6 +168,7 @@ pub fn language_name(lang_code: &str) -> &'static str {
 }
 
 /// Get the HTML lang attribute for a language code
+#[allow(dead_code)]
 pub fn html_lang(lang_code: &str) -> &str {
     match lang_code {
         "zh" | "zh-CN" => "zh-CN",
@@ -250,12 +253,14 @@ impl GlossaryTerm {
     }
 }
 
-/// Glossary configuration
+/// Glossary configuration (duplicate - use pipeline/glossary.rs)
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Glossary {
     pub terms: Vec<GlossaryTerm>,
 }
 
+#[allow(dead_code)]
 impl Glossary {
     /// Load glossary from file
     pub fn load(path: &PathBuf) -> Result<Self, ConfigError> {
@@ -291,6 +296,7 @@ impl Default for Glossary {
 }
 
 /// Article metadata stored in database
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Article {
     pub id: i64,

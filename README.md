@@ -75,11 +75,11 @@ This creates:
 data_dir = ".matome"  # Where database and search index are stored
 
 # Add your documentation sources
-[[domains]]
+[[domain]]
 url = "https://docs.python.org/"
 include = ["/**"]
 
-[[domains]]
+[[domain]]
 url = "https://developer.mozilla.org/"
 include = ["/**"]
 

@@ -233,6 +233,18 @@ fn crawl_command(
     let mut config: Config = toml::from_str(&content)
         .map_err(|e| format!("Failed to parse config: {}", e))?;
 
+
+    // Debug: print loaded domains
+    println!("Config loaded from: {}", config_path.display());
+    println!("Domains configured: {}", config.domains.len());
+    for (i, domain) in config.domains.iter().enumerate() {
+        println!("  [{}] {} (include: {:?})", i + 1, domain.url, domain.include);
+    }
+    if config.domains.is_empty() {
+        eprintln!("ERROR: No domains configured! Add domains to matome.toml or run 'matome add <url>'");
+        return Ok(());
+    }
+
     // Override concurrency if specified
     if let Some(c) = concurrency {
         config.crawl.concurrency = c;
@@ -244,6 +256,7 @@ fn crawl_command(
         let mut pipeline = Pipeline::new(&config).await?;
         pipeline.run(incremental).await
     })?;
+
 
     Ok(())
 }
