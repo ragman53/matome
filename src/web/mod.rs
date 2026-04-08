@@ -26,18 +26,32 @@ pub enum ServerError {
     Template(String),
 }
 
+use crate::db::Database;
+
 /// Application state
 pub struct AppState {
-    pub data_dir: PathBuf,
-    pub db: crate::db::Database,
+    pub db: Database,
+    pub search_engine: Option<crate::db::SearchEngine>,
 }
 
 /// Create and configure the web server
 pub fn create_app(data_dir: PathBuf) -> Result<Router, ServerError> {
-    let db = crate::db::Database::new(&data_dir)
+    let db = Database::new(&data_dir)
         .map_err(|e| ServerError::Http(e.to_string()))?;
 
-    let state = Arc::new(AppState { data_dir, db });
+    // Initialize search engine
+    let search_engine = match crate::db::SearchEngine::new(&data_dir) {
+        Ok(se) => {
+            info!("Search engine initialized");
+            Some(se)
+        }
+        Err(e) => {
+            tracing::warn!("Failed to initialize search engine: {}", e);
+            None
+        }
+    };
+
+    let state = Arc::new(AppState { db, search_engine });
 
     // Configure CORS for HTMX
     let cors = CorsLayer::new()

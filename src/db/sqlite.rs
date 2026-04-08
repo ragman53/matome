@@ -1,7 +1,7 @@
 //! SQLite database operations
 
-use crate::db::DbStats;
 use crate::db::DbError;
+use crate::db::DbStats;
 use crate::pipeline::TranslatedPage;
 use rusqlite::{params, Connection};
 use std::collections::HashSet;
@@ -132,6 +132,39 @@ impl Database {
         )?;
 
         let articles = stmt.query_map([], |row| {
+            Ok(ArticleRow {
+                id: row.get(0)?,
+                url: row.get(1)?,
+                title: row.get(2)?,
+                description: row.get(3)?,
+                original_md: row.get(4)?,
+                translated_md: row.get(5)?,
+                domain: row.get(6)?,
+                crawled_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        })?;
+
+        articles.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Get articles by list of URLs (for search results)
+    pub fn get_articles_by_urls(&self, urls: &[String]) -> Result<Vec<ArticleRow>, DbError> {
+        if urls.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let conn = self.conn.lock().unwrap();
+        let placeholders: Vec<String> = urls.iter().map(|_| "?".to_string()).collect();
+        let query = format!(
+            "SELECT id, url, title, description, original_md, translated_md, domain, crawled_at, updated_at
+             FROM articles WHERE url IN ({})",
+            placeholders.join(", ")
+        );
+
+        let mut stmt = conn.prepare(&query)?;
+
+        let articles = stmt.query_map(rusqlite::params_from_iter(urls.iter()), |row| {
             Ok(ArticleRow {
                 id: row.get(0)?,
                 url: row.get(1)?,

@@ -13,6 +13,8 @@ pub use translator::Translator;
 
 use crate::config::{Config, Domain};
 use crate::db::Database;
+use crate::db::search::SearchEngine;
+use crate::pipeline::glossary::Glossary;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::Semaphore;
@@ -75,6 +77,8 @@ pub struct Pipeline {
     crawler: Crawler,
     extractor: Extractor,
     translator: Option<Translator>,
+    glossary: Option<Glossary>,
+    search_engine: Option<Arc<SearchEngine>>,
     db: Database,
     concurrency: Arc<Semaphore>,
 }
@@ -95,6 +99,40 @@ impl Pipeline {
             None
         };
 
+        // Load glossary if configured
+        let glossary = if let Some(glossary_file) = &config.translate.glossary_file {
+            let path = std::path::PathBuf::from(glossary_file);
+            match Glossary::load(&path) {
+                Ok(g) if g.has_terms() => {
+                    info!("Loaded glossary with {} terms", g.term_count());
+                    Some(g)
+                }
+                Ok(_) => {
+                    info!("Glossary file is empty, skipping");
+                    None
+                }
+                Err(e) => {
+                    warn!("Failed to load glossary: {}, continuing without", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // Initialize search engine
+        let data_dir = std::path::PathBuf::from(&config.core.data_dir);
+        let search_engine = match SearchEngine::new(&data_dir) {
+            Ok(se) => {
+                info!("Search engine initialized");
+                Some(Arc::new(se))
+            }
+            Err(e) => {
+                warn!("Failed to initialize search engine: {}, continuing without", e);
+                None
+            }
+        };
+
         let concurrency = Arc::new(Semaphore::new(config.crawl.concurrency));
 
         Ok(Self {
@@ -102,6 +140,8 @@ impl Pipeline {
             crawler,
             extractor,
             translator,
+            glossary,
+            search_engine,
             db,
             concurrency,
         })
@@ -167,9 +207,12 @@ impl Pipeline {
         // Process pages concurrently
         let semaphore = self.concurrency.clone();
         let translator = self.translator.clone();
+        let glossary = self.glossary.clone();
+        let search_engine = self.search_engine.clone();
         let db = &self.db;
         let extractor = self.extractor.clone();
         let domain_name = domain.name();
+        let target_lang = self.config.translate.target_lang.clone();
 
         let futures = raw_pages.into_iter().filter(|page| {
             // Skip existing URLs in incremental mode
@@ -181,9 +224,12 @@ impl Pipeline {
         }).map(|raw_page| {
             let extractor = extractor.clone();
             let translator = translator.clone();
+            let glossary = glossary.clone();
+            let search_engine = search_engine.clone();
             let db = db;
             let semaphore = semaphore.clone();
             let domain_name = domain_name.clone();
+            let target_lang = target_lang.clone();
 
             async move {
                 let _permit = semaphore.acquire().await;
@@ -195,9 +241,9 @@ impl Pipeline {
                 };
 
                 // Translate
-                let translated = if let Some(ref translator) = translator {
+                let mut translated_md = if let Some(ref translator) = translator {
                     match translator.translate(&extracted.markdown).await {
-                        Ok(translated_md) => translated_md,
+                        Ok(tmd) => tmd,
                         Err(_e) => {
                             // Fall back to original if translation fails
                             extracted.markdown.clone()
@@ -207,18 +253,34 @@ impl Pipeline {
                     extracted.markdown.clone()
                 };
 
+                // Apply glossary replacements if configured
+                if let Some(ref gloss) = glossary {
+                    translated_md = gloss.apply_for_lang(&translated_md, &target_lang);
+                }
+
                 // Store in database
                 let page = TranslatedPage {
                     url: raw_page.url.clone(),
-                    title: extracted.title,
-                    description: extracted.description,
+                    title: extracted.title.clone(),
+                    description: extracted.description.clone(),
                     original_md: extracted.markdown,
-                    translated_md: translated,
-                    domain: domain_name,
+                    translated_md: translated_md.clone(),
+                    domain: domain_name.clone(),
                 };
 
                 if let Err(e) = db.save_article(&page) {
                     return Err(PipelineError::Storage(e.to_string()));
+                }
+
+                // Index document for full-text search
+                if let Some(ref se) = search_engine {
+                    let url = raw_page.url.clone();
+                    let title = extracted.title.clone();
+                    let content = translated_md.clone();
+                    let domain = domain_name.clone();
+                    if let Err(e) = se.index_document(&url, &title, &content, &domain) {
+                        warn!("Failed to index document: {}", e);
+                    }
                 }
 
                 Ok::<(), PipelineError>(())

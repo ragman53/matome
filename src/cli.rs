@@ -49,7 +49,7 @@ pub enum Command {
         #[arg(short, long, default_value = "matome.toml")]
         config: PathBuf,
         /// Number of concurrent requests
-        #[arg(short, long)]
+        #[arg(long)]
         concurrency: Option<usize>,
     },
 

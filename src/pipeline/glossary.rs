@@ -1,6 +1,6 @@
 //! Glossary module
 //!
-//! Handles glossary parsing and term replacement.
+//! Handles glossary parsing and term replacement with multi-language support.
 
 use crate::config::GlossaryTerm;
 use std::collections::HashMap;
@@ -16,10 +16,11 @@ pub enum GlossaryError {
     TomlParse(#[from] toml::de::Error),
 }
 
-/// Glossary for term replacement
-#[derive(Clone)]
+/// Glossary for term replacement, cached per language
+#[derive(Clone, Default)]
 pub struct Glossary {
-    terms: Arc<HashMap<String, String>>,
+    /// Raw terms from the glossary file
+    terms: Arc<Vec<GlossaryTerm>>,
 }
 
 impl Glossary {
@@ -32,54 +33,56 @@ impl Glossary {
         let content = std::fs::read_to_string(path)?;
         let config: GlossaryConfig = toml::from_str(&content)?;
 
-        let mut terms = HashMap::new();
-        for term in config.terms {
-            terms.insert(term.en.to_lowercase(), term.ja);
-        }
-
         Ok(Self {
-            terms: Arc::new(terms),
+            terms: Arc::new(config.terms),
         })
     }
 
     /// Create glossary from terms
     pub fn from_terms(terms: Vec<GlossaryTerm>) -> Self {
-        let mut term_map = HashMap::new();
-        for term in terms {
-            term_map.insert(term.en.to_lowercase(), term.ja);
-        }
         Self {
-            terms: Arc::new(term_map),
+            terms: Arc::new(terms),
         }
     }
 
-    /// Apply glossary replacements to text
-    pub fn apply(&self, text: &str) -> String {
+    /// Apply glossary replacements to text for a specific target language
+    pub fn apply_for_lang(&self, text: &str, lang: &str) -> String {
         let mut result = text.to_string();
 
-        // Simple word boundary replacement
-        for (en, ja) in self.terms.iter() {
-            // Case-insensitive word boundary replacement
-            let pattern = regex_lite::Regex::new(&format!(r"(?i)\b{}\b", regex_lite::escape(en)))
-                .unwrap_or_else(|_| regex_lite::Regex::new("").unwrap());
-
-            result = pattern.replace_all(&result, ja).to_string();
+        for term in self.terms.iter() {
+            if let Some(translation) = term.get_translation(lang) {
+                let pattern =
+                    regex_lite::Regex::new(&format!(r"(?i)\b{}\b", regex_lite::escape(&term.en)))
+                        .unwrap_or_else(|_| regex_lite::Regex::new("").unwrap());
+                result = pattern.replace_all(&result, translation).to_string();
+            }
         }
 
         result
     }
 
-    /// Get replacement for a term
-    pub fn get(&self, term: &str) -> Option<&String> {
-        self.terms.get(&term.to_lowercase())
+    /// Apply glossary replacements to text (defaults to Japanese for backward compatibility)
+    pub fn apply(&self, text: &str) -> String {
+        self.apply_for_lang(text, "ja")
     }
-}
 
-impl Default for Glossary {
-    fn default() -> Self {
-        Self {
-            terms: Arc::new(HashMap::new()),
-        }
+    /// Get replacement for a term in a specific language
+    pub fn get(&self, term: &str, lang: &str) -> Option<String> {
+        let term_lower = term.to_lowercase();
+        self.terms
+            .iter()
+            .find(|t| t.en.to_lowercase() == term_lower)
+            .and_then(|t| t.get_translation(lang).map(|s| s.to_string()))
+    }
+
+    /// Check if glossary has any terms
+    pub fn has_terms(&self) -> bool {
+        !self.terms.is_empty()
+    }
+
+    /// Get the number of terms in the glossary
+    pub fn term_count(&self) -> usize {
+        self.terms.len()
     }
 }
 
@@ -93,15 +96,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_glossary_apply() {
+    fn test_glossary_apply_legacy_ja() {
         let glossary = Glossary::from_terms(vec![
             GlossaryTerm {
                 en: "compiler".to_string(),
-                ja: "コンパイラ".to_string(),
+                ja: Some("コンパイラ".to_string()),
+                translations: HashMap::new(),
             },
             GlossaryTerm {
                 en: "runtime".to_string(),
-                ja: "ランタイム".to_string(),
+                ja: Some("ランタイム".to_string()),
+                translations: HashMap::new(),
             },
         ]);
 
@@ -111,10 +116,41 @@ mod tests {
     }
 
     #[test]
+    fn test_glossary_apply_multilang() {
+        let mut trans = HashMap::new();
+        trans.insert("ja".to_string(), "コンパイラ".to_string());
+        trans.insert("zh".to_string(), "编译器".to_string());
+        trans.insert("ko".to_string(), "컴파일러".to_string());
+
+        let glossary = Glossary::from_terms(vec![GlossaryTerm {
+            en: "compiler".to_string(),
+            ja: None,
+            translations: trans,
+        }]);
+
+        let result_ja = glossary.apply_for_lang("The compiler is fast.", "ja");
+        assert!(result_ja.contains("コンパイラ"));
+
+        let result_zh = glossary.apply_for_lang("The compiler is fast.", "zh");
+        assert!(result_zh.contains("编译器"));
+
+        let result_ko = glossary.apply_for_lang("The compiler is fast.", "ko");
+        assert!(result_ko.contains("컴파일러"));
+
+        // Unknown language — no replacement
+        let result_fr = glossary.apply_for_lang("The compiler is fast.", "fr");
+        assert!(result_fr.contains("compiler"));
+    }
+
+    #[test]
     fn test_glossary_case_insensitive() {
+        let mut trans = HashMap::new();
+        trans.insert("ja".to_string(), "API".to_string());
+
         let glossary = Glossary::from_terms(vec![GlossaryTerm {
             en: "API".to_string(),
-            ja: "API".to_string(),
+            ja: None,
+            translations: trans,
         }]);
 
         let result = glossary.apply("Use the api for testing.");

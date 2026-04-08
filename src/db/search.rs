@@ -2,6 +2,8 @@
 //!
 //! Handles Japanese full-text search indexing and querying.
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tantivy::collector::TopDocs;
@@ -82,19 +84,33 @@ impl SearchEngine {
         })
     }
 
+    /// Generate a deterministic ID from URL
+    fn generate_id(&self, url: &str) -> i64 {
+        let mut hasher = DefaultHasher::new();
+        url.hash(&mut hasher);
+        hasher.finish() as i64
+    }
+
     /// Index a document
+    /// Returns the generated document ID
     pub fn index_document(
         &self,
-        id: i64,
         url: &str,
         title: &str,
         content: &str,
         domain: &str,
-    ) -> Result<(), SearchError> {
+    ) -> Result<i64, SearchError> {
         let mut writer = self.writer.lock().unwrap();
 
-        // Delete existing document with same ID
-        let term = tantivy::Term::from_field_i64(self.id_field, id);
+        // Generate a simple hash ID from URL (deterministic)
+        let id = {
+            let mut hasher = DefaultHasher::new();
+            url.hash(&mut hasher);
+            hasher.finish() as i64
+        };
+
+        // Delete existing document with same URL
+        let term = tantivy::Term::from_field_text(self.url_field, url);
         writer.delete_term(term);
 
         // Add new document
@@ -116,7 +132,7 @@ impl SearchEngine {
 
         debug!("Indexed document: {} ({})", title, id);
 
-        Ok(())
+        Ok(id)
     }
 
     /// Search documents

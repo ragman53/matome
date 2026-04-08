@@ -136,6 +136,44 @@ fn default_target_lang() -> String {
     "ja".to_string()
 }
 
+/// Supported target languages
+pub const SUPPORTED_LANGUAGES: &[(&str, &str)] = &[
+    ("ja", "Japanese"),
+    ("zh", "Chinese"),
+    ("zh-CN", "Chinese (Simplified)"),
+    ("zh-TW", "Chinese (Traditional)"),
+    ("ko", "Korean"),
+    ("es", "Spanish"),
+    ("fr", "French"),
+    ("de", "German"),
+    ("pt", "Portuguese"),
+    ("it", "Italian"),
+    ("ru", "Russian"),
+    ("ar", "Arabic"),
+    ("hi", "Hindi"),
+    ("th", "Thai"),
+    ("vi", "Vietnamese"),
+    ("id", "Indonesian"),
+];
+
+/// Get the human-readable language name for a language code
+pub fn language_name(lang_code: &str) -> &'static str {
+    SUPPORTED_LANGUAGES
+        .iter()
+        .find(|(code, _)| *code == lang_code)
+        .map(|(_, name)| *name)
+        .unwrap_or("Unknown")
+}
+
+/// Get the HTML lang attribute for a language code
+pub fn html_lang(lang_code: &str) -> &str {
+    match lang_code {
+        "zh" | "zh-CN" => "zh-CN",
+        "zh-TW" => "zh-TW",
+        code => code,
+    }
+}
+
 /// Crawler configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -180,11 +218,36 @@ fn default_timeout() -> u64 {
     30
 }
 
-/// Glossary entry
+/// Glossary entry supporting multi-language translations
+///
+/// Each term has a source (`en`) and one or more target language translations.
+/// Supports both legacy single-language format (`ja = "..."`) and
+/// multi-language format (`translations = { ja = "...", zh = "..." }`).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GlossaryTerm {
+    /// Source term (typically English)
     pub en: String,
-    pub ja: String,
+
+    /// Legacy: Japanese translation only (backward compatible)
+    /// Prefer using `translations` for multi-language support.
+    #[serde(default)]
+    pub ja: Option<String>,
+
+    /// Multi-language translations (lang_code → translation)
+    /// Example: `translations = { ja = "コンパイラ", zh = "编译器" }`
+    #[serde(default)]
+    pub translations: std::collections::HashMap<String, String>,
+}
+
+impl GlossaryTerm {
+    /// Get the translation for a specific target language.
+    /// Falls back to `ja` field for backward compatibility.
+    pub fn get_translation(&self, lang: &str) -> Option<&str> {
+        self.translations
+            .get(lang)
+            .map(|s| s.as_str())
+            .or_else(|| self.ja.as_deref().filter(|_| lang == "ja"))
+    }
 }
 
 /// Glossary configuration
@@ -201,17 +264,23 @@ impl Glossary {
         Ok(glossary)
     }
 
-    /// Apply glossary replacements to text
-    pub fn apply(&self, text: &str) -> String {
+    /// Apply glossary replacements to text for a specific target language
+    pub fn apply_for_lang(&self, text: &str, lang: &str) -> String {
         let mut result = text.to_string();
         for term in &self.terms {
-            // Case-insensitive replacement
-            let pattern =
-                regex_lite::Regex::new(&format!("(?i)\\b{}\\b", regex_lite::escape(&term.en)))
-                    .unwrap_or_else(|_| regex_lite::Regex::new("").unwrap());
-            result = pattern.replace_all(&result, &term.ja).to_string();
+            if let Some(translation) = term.get_translation(lang) {
+                let pattern =
+                    regex_lite::Regex::new(&format!("(?i)\\b{}\\b", regex_lite::escape(&term.en)))
+                        .unwrap_or_else(|_| regex_lite::Regex::new("").unwrap());
+                result = pattern.replace_all(&result, translation).to_string();
+            }
         }
         result
+    }
+
+    /// Apply glossary replacements to text (defaults to Japanese for backward compatibility)
+    pub fn apply(&self, text: &str) -> String {
+        self.apply_for_lang(text, "ja")
     }
 }
 
@@ -256,16 +325,18 @@ mod tests {
     }
 
     #[test]
-    fn test_glossary_apply() {
+    fn test_glossary_apply_legacy_ja() {
         let glossary = Glossary {
             terms: vec![
                 GlossaryTerm {
                     en: "compiler".to_string(),
-                    ja: "コンパイラ".to_string(),
+                    ja: Some("コンパイラ".to_string()),
+                    translations: std::collections::HashMap::new(),
                 },
                 GlossaryTerm {
                     en: "runtime".to_string(),
-                    ja: "ランタイム".to_string(),
+                    ja: Some("ランタイム".to_string()),
+                    translations: std::collections::HashMap::new(),
                 },
             ],
         };
@@ -273,5 +344,49 @@ mod tests {
         let result = glossary.apply("The compiler handles runtime errors.");
         assert!(result.contains("コンパイラ"));
         assert!(result.contains("ランタイム"));
+    }
+
+    #[test]
+    fn test_glossary_apply_multilang() {
+        let mut translations = std::collections::HashMap::new();
+        translations.insert("ja".to_string(), "コンパイラ".to_string());
+        translations.insert("zh".to_string(), "编译器".to_string());
+        translations.insert("ko".to_string(), "컴파일러".to_string());
+
+        let glossary = Glossary {
+            terms: vec![GlossaryTerm {
+                en: "compiler".to_string(),
+                ja: None,
+                translations,
+            }],
+        };
+
+        // Japanese
+        let result_ja = glossary.apply_for_lang("The compiler is fast.", "ja");
+        assert!(result_ja.contains("コンパイラ"));
+
+        // Chinese
+        let result_zh = glossary.apply_for_lang("The compiler is fast.", "zh");
+        assert!(result_zh.contains("编译器"));
+
+        // Korean
+        let result_ko = glossary.apply_for_lang("The compiler is fast.", "ko");
+        assert!(result_ko.contains("컴파일러"));
+
+        // Unknown language — no replacement
+        let result_fr = glossary.apply_for_lang("The compiler is fast.", "fr");
+        assert!(result_fr.contains("compiler"));
+    }
+
+    #[test]
+    fn test_language_helpers() {
+        assert_eq!(language_name("ja"), "Japanese");
+        assert_eq!(language_name("zh"), "Chinese");
+        assert_eq!(language_name("ko"), "Korean");
+        assert_eq!(language_name("xx"), "Unknown");
+
+        assert_eq!(html_lang("ja"), "ja");
+        assert_eq!(html_lang("zh"), "zh-CN");
+        assert_eq!(html_lang("zh-TW"), "zh-TW");
     }
 }

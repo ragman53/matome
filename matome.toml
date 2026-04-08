@@ -1,24 +1,17 @@
-# matome configuration
-
 [core]
-data_dir = "./.matome"
+data-dir = ".matome"
 
-[[domain]]
-url = "https://docs.rust-lang.org"
-include = ["/stable/**"]
-
-[[domain]]
-url = "https://kubernetes.io/docs"
+[[domains]]
+url = "https://docs.mistral.ai/"
 include = ["/**"]
 
 [translate]
 provider = "ollama"
-model = "gemma3:12b"
-target_lang = "ja"
-glossary_file = "glossary.toml"
+model = "translategemma:4bb"
+target-lang = "ja"
 
 [crawl]
 concurrency = 8
-respect_robots = true
+respect-robots = true
 timeout = 30
-max_pages = 0
+max-pages = 0

@@ -97,8 +97,22 @@ pub async fn search(
 ) -> Result<Html<String>, HandlerError> {
     let q = query.q.as_deref().unwrap_or("");
     let articles = if q.is_empty() {
+        // No query - show all articles
         state.db.get_all_articles()
+    } else if let Some(ref search_engine) = state.search_engine {
+        // Use search engine for full-text search
+        match search_engine.search(q, 50) {
+            Ok(results) => {
+                let urls: Vec<String> = results.iter().map(|r| r.url.clone()).collect();
+                state.db.get_articles_by_urls(&urls)
+            }
+            Err(e) => {
+                tracing::warn!("Search error: {}, falling back to LIKE", e);
+                state.db.search_articles(q)
+            }
+        }
     } else {
+        // Fall back to SQLite LIKE search
         state.db.search_articles(q)
     }
     .map_err(|e| HandlerError::Database(e.to_string()))?;
@@ -115,6 +129,17 @@ pub async fn search_post(
     let q = params.q.as_deref().unwrap_or("");
     let articles = if q.is_empty() {
         state.db.get_all_articles()
+    } else if let Some(ref search_engine) = state.search_engine {
+        match search_engine.search(q, 50) {
+            Ok(results) => {
+                let urls: Vec<String> = results.iter().map(|r| r.url.clone()).collect();
+                state.db.get_articles_by_urls(&urls)
+            }
+            Err(e) => {
+                tracing::warn!("Search error: {}, falling back to LIKE", e);
+                state.db.search_articles(q)
+            }
+        }
     } else {
         state.db.search_articles(q)
     }
@@ -271,7 +296,7 @@ fn render_article(article: &crate::db::ArticleRow, show_original: bool) -> Strin
                 <h1 class="text-xl font-bold text-gray-800 mt-1">{title}</h1>
             </div>
             <div class="flex gap-2">
-                <a href="/article/{id}" class="px-3 py-1 text-sm {original_class} rounded">Original</a>
+                <a href="/article/{id}/original" class="px-3 py-1 text-sm {original_class} rounded">Original</a>
                 <a href="/article/{id}" class="px-3 py-1 text-sm {translated_class} rounded">Translated</a>
             </div>
         </div>

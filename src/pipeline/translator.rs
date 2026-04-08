@@ -90,15 +90,7 @@ impl OllamaTranslator {
     }
 
     fn get_language_name(&self) -> &'static str {
-        match self.target_lang.as_str() {
-            "ja" => "Japanese",
-            "ko" => "Korean",
-            "zh" => "Chinese",
-            "es" => "Spanish",
-            "fr" => "French",
-            "de" => "German",
-            _ => "Japanese",
-        }
+        crate::config::language_name(&self.target_lang)
     }
 
     fn split_by_code_blocks(&self, text: &str) -> Vec<CodePart> {
