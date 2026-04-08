@@ -1,7 +1,10 @@
 # matome configuration
+#
+# Note: All keys use kebab-case (e.g., data-dir, target-lang).
+# snake_case also works for backward compatibility.
 
 [core]
-data_dir = "./.matome"
+data-dir = ".matome"
 
 [[domain]]
 url = "https://docs.rust-lang.org"
@@ -14,11 +17,11 @@ include = ["/**"]
 [translate]
 provider = "ollama"
 model = "translategemma:4b"
-target_lang = "ja"
-glossary_file = "glossary.toml"
+target-lang = "ja"
+glossary-file = "glossary.toml"
 
 [crawl]
 concurrency = 8
-respect_robots = true
+respect-robots = true
 timeout = 30
-max_pages = 0
+max-pages = 0
