@@ -23,6 +23,47 @@ pub enum SearchError {
     Io(#[from] std::io::Error),
 }
 
+/// Create index with schema
+fn create_index(index_path: &PathBuf, schema: Schema) -> Result<Index, SearchError> {
+    std::fs::create_dir_all(index_path)?;
+    Index::create_in_dir(index_path, schema).map_err(|e| SearchError::Index(e.to_string()))
+}
+
+/// Build search schema and return all field references
+fn build_schema() -> (Schema, Field, Field, Field, Field, Field) {
+    let mut schema_builder = Schema::builder();
+    let id_field = schema_builder.add_i64_field("id", STORED | INDEXED);
+    let url_field = schema_builder.add_text_field("url", STRING | STORED);
+    let title_field = schema_builder.add_text_field("title", TEXT | STORED);
+    let content_field = schema_builder.add_text_field("content", TEXT | STORED);
+    let domain_field = schema_builder.add_text_field("domain", STRING | STORED);
+    let schema = schema_builder.build();
+    (
+        schema,
+        id_field,
+        url_field,
+        title_field,
+        content_field,
+        domain_field,
+    )
+}
+
+/// Create index reader with reload policy
+fn create_reader(index: &Index) -> Result<IndexReader, SearchError> {
+    index
+        .reader_builder()
+        .reload_policy(ReloadPolicy::OnCommitWithDelay)
+        .try_into()
+        .map_err(|e| SearchError::Index(e.to_string()))
+}
+
+/// Create index writer with buffer size
+fn create_writer(index: &Index) -> Result<IndexWriter, SearchError> {
+    index
+        .writer(50_000_000)
+        .map_err(|e| SearchError::Index(e.to_string()))
+}
+
 /// Search engine configuration
 pub struct SearchEngine {
     index: Index,
@@ -39,36 +80,17 @@ impl SearchEngine {
     /// Create a new search engine
     pub fn new(data_dir: &PathBuf) -> Result<Self, SearchError> {
         let index_path = data_dir.join("search_index");
+        let (schema, id_field, url_field, title_field, content_field, domain_field) =
+            build_schema();
 
-        // Build schema
-        let mut schema_builder = Schema::builder();
-
-        let id_field = schema_builder.add_i64_field("id", STORED | INDEXED);
-        let url_field = schema_builder.add_text_field("url", STRING | STORED);
-        let title_field = schema_builder.add_text_field("title", TEXT | STORED);
-        let content_field = schema_builder.add_text_field("content", TEXT | STORED);
-        let domain_field = schema_builder.add_text_field("domain", STRING | STORED);
-
-        let schema = schema_builder.build();
-
-        // Create or open index
         let index = if index_path.exists() {
             Index::open_in_dir(&index_path).map_err(|e| SearchError::Index(e.to_string()))?
         } else {
-            std::fs::create_dir_all(&index_path)?;
-            Index::create_in_dir(&index_path, schema.clone())
-                .map_err(|e| SearchError::Index(e.to_string()))?
+            create_index(&index_path, schema)?
         };
 
-        let reader = index
-            .reader_builder()
-            .reload_policy(ReloadPolicy::OnCommitWithDelay)
-            .try_into()
-            .map_err(|e| SearchError::Index(e.to_string()))?;
-
-        let writer = index
-            .writer(50_000_000)
-            .map_err(|e| SearchError::Index(e.to_string()))?;
+        let reader = create_reader(&index)?;
+        let writer = create_writer(&index)?;
 
         info!("Search index initialized at: {}", index_path.display());
 
@@ -85,6 +107,7 @@ impl SearchEngine {
     }
 
     /// Generate a deterministic ID from URL
+    #[allow(dead_code)]
     fn generate_id(&self, url: &str) -> i64 {
         let mut hasher = DefaultHasher::new();
         url.hash(&mut hasher);
@@ -192,6 +215,7 @@ impl SearchEngine {
     }
 
     /// Clear the index
+    #[allow(dead_code)]
     pub fn clear(&self) -> Result<(), SearchError> {
         let mut writer = self.writer.lock().unwrap();
 
@@ -208,7 +232,65 @@ impl SearchEngine {
         Ok(())
     }
 
+    /// Delete from search index by URL
+    pub fn delete_by_url(&self, url: &str) -> Result<(), SearchError> {
+        let mut writer = self.writer.lock().unwrap();
+        let term = tantivy::Term::from_field_text(self.url_field, url);
+        writer.delete_term(term);
+        writer
+            .commit()
+            .map_err(|e| SearchError::Index(e.to_string()))?;
+        debug!("Deleted document from search index: {}", url);
+        Ok(())
+    }
+
+    /// Rebuild the entire search index from database
+    #[allow(dead_code)]
+    pub fn rebuild_from_db(
+        &self,
+        articles: &[(String, String, String, String)],
+    ) -> Result<(), SearchError> {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut writer = self.writer.lock().unwrap();
+
+        // Clear all documents
+        writer
+            .delete_all_documents()
+            .map_err(|e| SearchError::Index(e.to_string()))?;
+        writer
+            .commit()
+            .map_err(|e| SearchError::Index(e.to_string()))?;
+
+        // Re-add all articles
+        for (url, title, content, domain) in articles {
+            let id = {
+                let mut hasher = DefaultHasher::new();
+                url.hash(&mut hasher);
+                hasher.finish() as i64
+            };
+            let doc = doc!(
+                self.id_field => id,
+                self.url_field => url.as_str(),
+                self.title_field => title.as_str(),
+                self.content_field => content.as_str(),
+                self.domain_field => domain.as_str(),
+            );
+            writer
+                .add_document(doc)
+                .map_err(|e| SearchError::Index(e.to_string()))?;
+        }
+
+        writer
+            .commit()
+            .map_err(|e| SearchError::Index(e.to_string()))?;
+        info!("Search index rebuilt with {} documents", articles.len());
+        Ok(())
+    }
+
     /// Get document count
+    #[allow(dead_code)]
     pub fn doc_count(&self) -> Result<u64, SearchError> {
         let searcher: Searcher = self.reader.searcher();
         Ok(searcher.num_docs())
@@ -216,6 +298,7 @@ impl SearchEngine {
 }
 
 /// Search result
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SearchResult {
     pub id: i64,

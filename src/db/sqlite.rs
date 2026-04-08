@@ -12,6 +12,7 @@ use tracing::{debug, info};
 /// SQLite database wrapper
 pub struct Database {
     conn: Mutex<Connection>,
+    #[allow(dead_code)] // Future: debugging, logging
     path: PathBuf,
 }
 
@@ -182,6 +183,7 @@ impl Database {
     }
 
     /// Get articles by domain
+    #[allow(dead_code)]
     pub fn get_articles_by_domain(&self, domain: &str) -> Result<Vec<ArticleRow>, DbError> {
         let conn = self.conn.lock().unwrap();
 
@@ -278,6 +280,7 @@ impl Database {
     }
 
     /// Delete article by ID
+    #[allow(dead_code)]
     pub fn delete_article(&self, id: i64) -> Result<bool, DbError> {
         let conn = self.conn.lock().unwrap();
 
@@ -286,7 +289,68 @@ impl Database {
         Ok(deleted > 0)
     }
 
+    /// Delete articles by domain
+    pub fn delete_by_domain(&self, domain: &str) -> Result<usize, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let deleted = conn.execute("DELETE FROM articles WHERE domain = ?1", params![domain])?;
+
+        info!("Deleted {} articles from domain '{}'", deleted, domain);
+
+        Ok(deleted)
+    }
+
+    /// Delete orphaned articles (missing title, description, or translation)
+    pub fn delete_orphaned(&self) -> Result<usize, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let deleted = conn.execute(
+            r#"DELETE FROM articles WHERE 
+                title IS NULL OR title = '' OR 
+                description IS NULL OR description = '' OR 
+                translated_md IS NULL OR translated_md = '' OR
+                LENGTH(original_md) < 50"#,
+            [],
+        )?;
+
+        info!("Deleted {} orphaned articles", deleted);
+
+        Ok(deleted)
+    }
+
+    /// Get orphaned articles (for display before deletion)
+    pub fn get_orphaned_articles(&self) -> Result<Vec<ArticleRow>, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let mut stmt = conn.prepare(
+            r#"SELECT id, url, title, description, original_md, translated_md, domain, crawled_at, updated_at
+             FROM articles 
+             WHERE title IS NULL OR title = '' OR 
+                   description IS NULL OR description = '' OR 
+                   translated_md IS NULL OR translated_md = '' OR
+                   LENGTH(original_md) < 50
+             ORDER BY domain, id"#,
+        )?;
+
+        let articles = stmt.query_map([], |row| {
+            Ok(ArticleRow {
+                id: row.get(0)?,
+                url: row.get(1)?,
+                title: row.get(2)?,
+                description: row.get(3)?,
+                original_md: row.get(4)?,
+                translated_md: row.get(5)?,
+                domain: row.get(6)?,
+                crawled_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        })?;
+
+        articles.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     /// Clear all articles
+    #[allow(dead_code)]
     pub fn clear(&self) -> Result<usize, DbError> {
         let conn = self.conn.lock().unwrap();
 
@@ -309,5 +373,6 @@ pub struct ArticleRow {
     pub translated_md: Option<String>,
     pub domain: String,
     pub crawled_at: String,
+    #[allow(dead_code)] // Future: display/update tracking
     pub updated_at: String,
 }
