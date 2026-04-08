@@ -9,10 +9,11 @@ matome automatically crawls documentation from specified websites, translates co
 - 🌐 **Multi-domain crawling** - Collect docs from multiple sources simultaneously
 - 🔄 **Automatic translation** - Translate English docs to Japanese via Ollama or DeepL
 - 📚 **Local web portal** - Browse your collected docs in a clean, sidebar-based interface
-- 🔍 **Full-text search** - Search across all your collected documentation
+- 🔍 **Full-text search** - Search across all your collected documentation (Tantivy)
 - 📖 **Glossary support** - Maintain consistent terminology across translations
 - ⚡ **Incremental updates** - Only crawl new or changed pages
 - 🧹 **Database management** - Clean incomplete or unwanted articles
+- 📦 **Docusaurus/MkDocs対応** - Code blocks with nested elements properly extracted
 
 ## 🚀 Quick Start
 
@@ -72,7 +73,7 @@ This creates:
 
 ```toml
 [core]
-data_dir = ".matome"  # Where database and search index are stored
+data-dir = ".matome"      # Where database and search index are stored
 
 # Add your documentation sources
 [[domain]]
@@ -87,14 +88,16 @@ include = ["/**"]
 [translate]
 provider = "ollama"           # or "deepl", "none"
 model = "gemma3:4b"           # Ollama model name
-target_lang = "ja"            # Target language code
-glossary_file = "glossary.toml"
+target-lang = "ja"            # Target language code
+glossary-file = "glossary.toml"
 
 # Crawling settings
 [crawl]
 concurrency = 8               # Parallel crawling threads
-respect_robots = true         # Follow robots.txt
+respect-robots = true         # Follow robots.txt
 timeout = 30                 # Request timeout (seconds)
+max-pages = 0                 # 0 = unlimited, N = max pages
+# treat-subdomains-same = true  # Optional: docs.example.com = example.com
 ```
 
 ### Glossary
@@ -125,7 +128,7 @@ Generate configuration templates in the current directory.
 
 ```bash
 matome init                    # Create in current directory
-matome init --output /path     # Create in specific directory
+matome init --output /path    # Create in specific directory
 ```
 
 ### `matome add`
@@ -153,9 +156,9 @@ Start the local web server.
 
 ```bash
 matome serve                        # Default: 127.0.0.1:8080
-matome serve --port 3000            # Custom port
-matome serve --host 0.0.0.0         # Bind address
-matome serve --data-dir .data       # Custom data directory
+matome serve --port 3000           # Custom port
+matome serve --host 0.0.0.0        # Bind address
+matome serve --data-dir .data      # Custom data directory
 ```
 
 ### `matome status`
@@ -202,7 +205,7 @@ matome clean --id 123
 
 ### Search
 
-- Full-text search across all articles
+- Full-text search across all articles (Tantivy)
 - Live search with HTMX
 - Domain-scoped searching via sidebar
 
@@ -214,7 +217,7 @@ matome clean --id 123
 [translate]
 provider = "ollama"
 model = "gemma3:4b"  # or "llama3", "mistral", etc.
-target_lang = "ja"
+target-lang = "ja"
 ```
 
 Install Ollama: https://ollama.ai/
@@ -233,7 +236,7 @@ ollama serve
 [translate]
 provider = "deepl"
 api_key = "your-api-key"
-target_lang = "JA"
+target-lang = "JA"
 ```
 
 Get API key: https://www.deepl.com/pro-api
@@ -249,7 +252,7 @@ provider = "none"
 
 ```
 .matome/
-├── matome.db              # SQLite database
+├── matome.db              # SQLite database (WAL mode)
 │                         # Contains: id, url, title, description,
 │                         #          original_md, translated_md,
 │                         #          domain, crawled_at, updated_at
@@ -258,6 +261,16 @@ provider = "none"
 │
 └── .gitkeep             # Preserves directory structure
 ```
+
+## 📋 Documentation Sites Supported
+
+matome is optimized for these documentation formats:
+
+- **Docusaurus** - GitHub Docs, React Native, Meta, etc.
+- **MkDocs** - Python documentation ecosystem
+- **Standard HTML** - Most documentation sites
+
+Code blocks with nested elements (syntax highlighting `<span>` tags) are properly extracted.
 
 ## 🛠️ Troubleshooting
 
