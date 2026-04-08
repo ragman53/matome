@@ -185,6 +185,7 @@ matome/
 | `matome crawl [--incremental]` | Execute full pipeline | ✅ |
 | `matome serve [--port <port>] [--host <host>]` | Start web server | ✅ |
 | `matome status [--verbose]` | Display statistics | ✅ |
+| `matome clean --all\|--domain\|--orphaned\|--id` | Clean database | ✅ |
 
 ---
 
@@ -282,13 +283,23 @@ translations = { ja = "API", zh = "API", ko = "API" }
   - Custom fonts: Crimson Pro (headings), IBM Plex Sans (body), JetBrains Mono (code)
   - Soft shadows and smooth animations
 
+- **Database Clean Command**:
+  - New `matome clean` command for deleting articles
+  - Options: `--all`, `--domain`, `--orphaned`, `--id`
+  - Sync search index when cleaning database
+  - Confirmation prompts for destructive operations
+  - New SQLite methods: `delete_by_domain()`, `delete_orphaned()`, `get_orphaned_articles()`
+  - New SearchEngine methods: `delete_by_url()`, `rebuild_from_db()`
+
 ---
+
 
 ## 10. Git History
 
 | Commit | Description |
 |--------|-------------|
-| Latest | feat: Redesign web UI with documentation portal layout |
+| Latest | feat: Add database clean command with search index sync |
+| Previous | feat: Redesign web UI with documentation portal layout |
 | Previous | refactor: Code quality refactoring - extract helper functions |
 | Previous | feat: integrate glossary and search engine into pipeline |
 | Previous | Initial commit |
