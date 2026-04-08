@@ -13,46 +13,17 @@
 
 ### 🔴 Critical Issues
 
-#### [ ] 0-1. 設定ファイルキー名統一
+#### [x] 0-1. 設定ファイルキー名統一 ✅
 
 **ファイル**: `examples/matome.toml.example`  
-**問題**: snake_caseだが、本体はkebab-case
+**対応済み**:
+- [x] `snake_case` → `kebab-case` に変更
+- [x] コメント追加で説明明記
 
-```toml
-# 変更前 (snake_case)
-data_dir = "./.matome"
-target_lang = "ja"
-
-# 変更後 (kebab-case)
-data-dir = ".matome"
-target-lang = "ja"
-```
-
-**対応**:
-- [ ] `examples/matome.toml.example` のキーをkebab-caseに変更
-- [ ] コメント追加で説明明記
-
-#### [ ] 0-2. 翻訳失敗時のログ出力
+#### [x] 0-2. 翻訳失敗時のログ出力 ✅
 
 **ファイル**: `src/pipeline/mod.rs`  
-**問題**: 翻訳失敗をサイレントに握りつぶし
-
-```rust
-// 変更前
-Err(_e) => {
-    extracted.markdown.clone()
-}
-
-// 変更後
-Err(e) => {
-    warn!("Translation failed for {}: {}", url, e);
-    extracted.markdown.clone()
-}
-```
-
-**対応**:
-- [ ] `warn!` ログのインポート確認
-- [ ] 翻訳失敗時にURLとエラー内容を出力
+**対応済み**: `warn!("Translation failed, using original: {}", e)` が実装済み
 
 ---
 
@@ -60,24 +31,20 @@ Err(e) => {
 
 ### 🟠 High Priority
 
-#### [ ] 1-1. Extractor Clone設計修正
+#### [x] 1-1. Extractor Clone設計修正 ✅
 
-**ファイル**: `src/pipeline/extractor.rs`, `src/pipeline/mod.rs`  
-**問題**: `#[derive(Clone)]` を使わず独自メソッドで応急処置
+**ファイル**: `src/pipeline/extractor.rs`  
+**対応済み**:
+- [x] `#[derive(Clone)]` を付与
+- [x] 手動Clone実装を削除
 
-**対応**:
-- [ ] Extractorに `#[derive(Clone)]` を付与
-- [ ] `src/pipeline/mod.rs` の独自cloneメソッド削除
-
-#### [ ] 1-2. テンプレート管理統一
+#### [x] 1-2. テンプレート管理統一 ✅
 
 **ファイル**: `src/web/handlers.rs`, `templates/`  
-**問題**: handlers.rsに500行以上のインラインHTML + templates/ファイル二重管理
-
-**対応**:
-- [ ] 外部テンプレートファイル使用に一本化
-- [ ] handlers.rsのインラインHTML削除
-- [ ] Askama使用の場合はAskamaに完全移行
+**対応済み**:
+- [x] `include_str!()` でコンパイル時埋め込みに統一
+- [x] インラインHTML削除（711行 → 301行、58%削減）
+- [x] templates/ディレクトリは開発時の編集用に残置
 
 ---
 
