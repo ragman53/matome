@@ -1,11 +1,15 @@
 [package]
 name = "matome"
-version = "0.1.0"
+version = "0.2.0"  # v0.1.0 = current stable, v0.2.0 = direction finding
 edition = "2021"
 description = "A Rust CLI tool for collecting, translating, and browsing documentation"
 license = "MIT"
 repository = "https://github.com/example/matome"
 authors = ["Author <author@example.com>"]
+
+# Note: v0.1.0 is the stable version (flat articles, translation-focused)
+# v0.2.0 is the direction-finding version (hierarchical structure, AI agent support)
+# v1.0.0 will be the complete release
 
 [dependencies]
 # CLI & Config
@@ -45,6 +49,10 @@ walkdir = "2"
 async-trait = "0.1"
 regex-lite = "0.1"
 roxmltree = "0.20"
+sha2 = "0.10"  # v0.2.0: Content hashing for version tracking
+serde_json = "1"  # v0.2.0: JSON output for diff command
+dirs = "5"  # v0.2.0: Agent mode workspace directory
+chrono = "0.4"  # v0.2.0: Timestamps for manifests
 
 [dev-dependencies]
 tempfile = "3"

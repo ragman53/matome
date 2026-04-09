@@ -4,6 +4,7 @@
 
 mod handlers;
 mod templates;
+mod tree_nav;
 
 use axum::{
     routing::{get, post},
@@ -70,6 +71,13 @@ pub fn create_app(data_dir: PathBuf) -> Result<Router, ServerError> {
         .route("/domains", get(handlers::domains))
         .route("/domain/:domain", get(handlers::domain_articles))
         .route("/api/articles", get(handlers::api_articles))
+        // v0.2.0: Tree navigation routes
+        .route("/tree/*path", get(handlers::tree_page))
+        .route("/tree", get(handlers::tree_root))
+        .route("/api/tree", get(handlers::api_tree))
+        // v0.2.0: Diff Mode routes
+        .route("/diff", get(handlers::diff_page))
+        .route("/api/changes", get(handlers::api_changes))
         .layer(cors)
         .with_state(state);
 

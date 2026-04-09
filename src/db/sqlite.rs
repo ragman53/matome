@@ -6,12 +6,13 @@ use crate::pipeline::TranslatedPage;
 use rusqlite::{params, Connection};
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tracing::{debug, info};
 
 /// SQLite database wrapper
+#[derive(Clone)]
 pub struct Database {
-    conn: Mutex<Connection>,
+    conn: Arc<Mutex<Connection>>,
     #[allow(dead_code)] // Future: debugging, logging
     path: PathBuf,
 }
@@ -56,7 +57,7 @@ impl Database {
         info!("Database initialized at: {}", db_path.display());
 
         Ok(Self {
-            conn: Mutex::new(conn),
+            conn: Arc::new(Mutex::new(conn)),
             path: db_path,
         })
     }

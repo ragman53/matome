@@ -1,6 +1,7 @@
 //! Full-text search engine using Tantivy
 //!
 //! Handles Japanese full-text search indexing and querying.
+//! v0.2.0: Added tree_path and doc_version fields for hierarchical search.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -30,13 +31,18 @@ fn create_index(index_path: &PathBuf, schema: Schema) -> Result<Index, SearchErr
 }
 
 /// Build search schema and return all field references
-fn build_schema() -> (Schema, Field, Field, Field, Field, Field) {
+/// v0.2.0: Added tree_path and doc_version for hierarchical search
+fn build_schema() -> (Schema, Field, Field, Field, Field, Field, Field, Field) {
     let mut schema_builder = Schema::builder();
     let id_field = schema_builder.add_i64_field("id", STORED | INDEXED);
     let url_field = schema_builder.add_text_field("url", STRING | STORED);
     let title_field = schema_builder.add_text_field("title", TEXT | STORED);
     let content_field = schema_builder.add_text_field("content", TEXT | STORED);
     let domain_field = schema_builder.add_text_field("domain", STRING | STORED);
+    // v0.2.0: New fields for hierarchical document structure
+    let tree_path_field = schema_builder.add_text_field("tree_path", STRING | STORED);
+    let doc_version_field = schema_builder.add_text_field("doc_version", STRING | STORED);
+
     let schema = schema_builder.build();
     (
         schema,
@@ -45,6 +51,8 @@ fn build_schema() -> (Schema, Field, Field, Field, Field, Field) {
         title_field,
         content_field,
         domain_field,
+        tree_path_field,
+        doc_version_field,
     )
 }
 
@@ -74,17 +82,36 @@ pub struct SearchEngine {
     title_field: Field,
     content_field: Field,
     domain_field: Field,
+    tree_path_field: Field,   // v0.2.0
+    doc_version_field: Field, // v0.2.0
 }
 
 impl SearchEngine {
     /// Create a new search engine
     pub fn new(data_dir: &PathBuf) -> Result<Self, SearchError> {
         let index_path = data_dir.join("search_index");
-        let (schema, id_field, url_field, title_field, content_field, domain_field) =
-            build_schema();
+        let (
+            schema,
+            id_field,
+            url_field,
+            title_field,
+            content_field,
+            domain_field,
+            tree_path_field,
+            doc_version_field,
+        ) = build_schema();
 
         let index = if index_path.exists() {
-            Index::open_in_dir(&index_path).map_err(|e| SearchError::Index(e.to_string()))?
+            // Check if existing index needs upgrade (v0.2.0)
+            match Index::open_in_dir(&index_path) {
+                Ok(idx) => idx,
+                Err(_) => {
+                    // Index is corrupted or incompatible, recreate it
+                    tracing::warn!("Search index needs rebuild, deleting...");
+                    std::fs::remove_dir_all(&index_path).ok();
+                    create_index(&index_path, schema)?
+                }
+            }
         } else {
             create_index(&index_path, schema)?
         };
@@ -103,6 +130,8 @@ impl SearchEngine {
             title_field,
             content_field,
             domain_field,
+            tree_path_field,
+            doc_version_field,
         })
     }
 
@@ -123,27 +152,46 @@ impl SearchEngine {
         content: &str,
         domain: &str,
     ) -> Result<i64, SearchError> {
+        self.index_document_with_tree(url, title, content, domain, None, None)
+    }
+
+    /// Index a document with hierarchical metadata
+    /// v0.2.0: Added tree_path and doc_version support
+    pub fn index_document_with_tree(
+        &self,
+        url: &str,
+        title: &str,
+        content: &str,
+        domain: &str,
+        tree_path: Option<&str>,
+        doc_version: Option<&str>,
+    ) -> Result<i64, SearchError> {
         let mut writer = self.writer.lock().unwrap();
 
-        // Generate a simple hash ID from URL (deterministic)
         let id = {
             let mut hasher = DefaultHasher::new();
             url.hash(&mut hasher);
             hasher.finish() as i64
         };
 
-        // Delete existing document with same URL
         let term = tantivy::Term::from_field_text(self.url_field, url);
         writer.delete_term(term);
 
-        // Add new document
-        let doc = doc!(
+        let mut doc = doc!(
             self.id_field => id,
             self.url_field => url,
             self.title_field => title,
             self.content_field => content,
             self.domain_field => domain,
         );
+
+        // v0.2.0: Add hierarchical fields if available
+        if let Some(path) = tree_path {
+            doc.add_text(self.tree_path_field, path);
+        }
+        if let Some(version) = doc_version {
+            doc.add_text(self.doc_version_field, version);
+        }
 
         writer
             .add_document(doc)
@@ -203,11 +251,108 @@ impl SearchEngine {
                 .unwrap_or("")
                 .to_string();
 
+            let tree_path = retrieved_doc
+                .get_first(self.tree_path_field)
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            let doc_version = retrieved_doc
+                .get_first(self.doc_version_field)
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
             results.push(SearchResult {
                 id,
                 url,
                 title,
                 domain,
+                tree_path,
+                doc_version,
+            });
+        }
+
+        Ok(results)
+    }
+
+    /// Search with faceted filtering
+    /// v0.2.0: Filter by tree_path or doc_version
+    pub fn search_with_facets(
+        &self,
+        query: &str,
+        tree_path_filter: Option<&str>,
+        version_filter: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<SearchResult>, SearchError> {
+        let searcher: Searcher = self.reader.searcher();
+
+        let query_parser =
+            QueryParser::for_index(&self.index, vec![self.title_field, self.content_field]);
+
+        let mut query_str = query.to_string();
+
+        // Add facet filters if specified
+        if let Some(path) = tree_path_filter {
+            query_str = format!("{} +tree_path:{}", query_str, path);
+        }
+        if let Some(version) = version_filter {
+            query_str = format!("{} +doc_version:{}", query_str, version);
+        }
+
+        let query = query_parser
+            .parse_query(&query_str)
+            .map_err(|e| SearchError::QueryParse(e.to_string()))?;
+
+        let top_docs = searcher
+            .search(&query, &TopDocs::with_limit(limit))
+            .map_err(|e| SearchError::Index(e.to_string()))?;
+
+        let mut results = Vec::new();
+
+        for (_score, doc_address) in top_docs {
+            let retrieved_doc: TantivyDocument = searcher
+                .doc(doc_address)
+                .map_err(|e| SearchError::Index(e.to_string()))?;
+
+            let id = retrieved_doc
+                .get_first(self.id_field)
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+
+            let url = retrieved_doc
+                .get_first(self.url_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            let title = retrieved_doc
+                .get_first(self.title_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            let domain = retrieved_doc
+                .get_first(self.domain_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            let tree_path = retrieved_doc
+                .get_first(self.tree_path_field)
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            let doc_version = retrieved_doc
+                .get_first(self.doc_version_field)
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            results.push(SearchResult {
+                id,
+                url,
+                title,
+                domain,
+                tree_path,
+                doc_version,
             });
         }
 
@@ -255,7 +400,6 @@ impl SearchEngine {
 
         let mut writer = self.writer.lock().unwrap();
 
-        // Clear all documents
         writer
             .delete_all_documents()
             .map_err(|e| SearchError::Index(e.to_string()))?;
@@ -263,7 +407,6 @@ impl SearchEngine {
             .commit()
             .map_err(|e| SearchError::Index(e.to_string()))?;
 
-        // Re-add all articles
         for (url, title, content, domain) in articles {
             let id = {
                 let mut hasher = DefaultHasher::new();
@@ -302,7 +445,6 @@ impl SearchEngine {
 /// Note: The `id` field is a Tantivy internal document ID (derived from URL hash),
 /// NOT the SQLite AUTOINCREMENT row ID. Use the `url` field to fetch full article
 /// data from SQLite via `Database::get_articles_by_urls()`.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SearchResult {
     /// Tantivy document ID (URL hash, not SQLite row ID)
@@ -313,4 +455,8 @@ pub struct SearchResult {
     pub title: String,
     /// Article domain
     pub domain: String,
+    /// v0.2.0: Hierarchical tree path
+    pub tree_path: Option<String>,
+    /// v0.2.0: Document version
+    pub doc_version: Option<String>,
 }

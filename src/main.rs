@@ -13,6 +13,7 @@ mod config;
 mod pipeline;
 mod db;
 mod web;
+mod modes;  // v0.2.0: Agent mode module
 
 use cli::Cli;
 

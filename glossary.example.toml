@@ -1,16 +1,24 @@
 # matome glossary - Technical term translations
+# v0.2.0: Added priority support for change detection
+
+[meta]
+lang = "en"
+version = "1.0"
 
 [[terms]]
 en = "compiler"
 ja = "コンパイラ"
+priority = "high"  # Breaking changes trigger alerts
 
 [[terms]]
 en = "runtime"
 ja = "ランタイム"
+priority = "high"
 
 [[terms]]
 en = "async"
 ja = "非同期"
+priority = "high"
 
 [[terms]]
 en = "closure"
@@ -19,15 +27,28 @@ ja = "クロージャ"
 [[terms]]
 en = "trait"
 ja = "トレイト"
+priority = "high"
 
 [[terms]]
 en = "ownership"
 ja = "所有権"
+priority = "medium"
 
 [[terms]]
 en = "borrowing"
 ja = "借用"
+priority = "medium"
 
 [[terms]]
 en = "lifetime"
 ja = "ライフタイム"
+
+# Multi-language format
+[[terms]]
+en = "API"
+translations = { ja = "API", zh = "API", ko = "API" }
+
+# v0.2.0: Priority levels
+# - high: Triggers Breaking change alert when modified
+# - medium: Included in change reports
+# - low/default: Normal tracking

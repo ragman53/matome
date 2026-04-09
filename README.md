@@ -1,31 +1,48 @@
 # matome
 
-A Rust CLI tool for collecting, translating, and browsing documentation locally.
+**Your personal technical documentation infrastructure.** (v0.2.0 Draft)
 
-matome automatically crawls documentation from specified websites, translates content to Japanese (or your target language), and provides a beautiful local web portal for reading—all in one unified experience.
+> ⚠️ **この版本はの方向性を探る段階です** - 完全リリースは v1.0.0 を待たないでください。
+
+matome automatically crawls documentation from specified websites, organizes them into hierarchical structures, tracks version changes, and provides a local web portal for browsing—all in one unified experience.
+
+**New in v0.2.0**: Agent-Ready workspace export for AI coding assistants like Claude Code, Cursor, and Aider.
 
 ## ✨ Features
 
+### 🎯 Three-Mode Architecture
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **📚 Library** | Local web portal with hierarchical navigation | Browse docs offline |
+| **🔄 Diff** | Automatic change detection & alerts | Track API breaking changes |
+| **🤖 Agent** | Structured workspace export for AI agents | Context-aware code generation |
+
+### Core Features
+
 - 🌐 **Multi-domain crawling** - Collect docs from multiple sources simultaneously
-- 🔄 **Automatic translation** - Translate English docs to Japanese via Ollama or DeepL
-- 📚 **Local web portal** - Browse your collected docs in a clean, sidebar-based interface
-- 🔍 **Full-text search** - Search across all your collected documentation (Tantivy)
-- 📖 **Glossary support** - Maintain consistent terminology across translations
+- 🔄 **Hierarchical structure** - Preserve document tree (Site → Section → Page)
+- 📊 **Version tracking** - Content hash-based change detection
+- 🌐 **Automatic translation** - Translate to Japanese via Ollama or DeepL (optional)
+- 📚 **Local web portal** - Browse in a clean, sidebar-based interface
+- 🔍 **Full-text search** - Search across all documentation (Tantivy)
+- 🤖 **Agent-ready export** - Workspace format for AI coding assistants
+- 📖 **Glossary support** - Maintain consistent terminology
 - ⚡ **Incremental updates** - Only crawl new or changed pages
-- 🧹 **Database management** - Clean incomplete or unwanted articles
-- 📦 **Docusaurus/MkDocs対応** - Code blocks with nested elements properly extracted
 
 ## 🚀 Quick Start
+
+### Library Mode (Browse Locally)
 
 ```bash
 # 1. Initialize configuration
 matome init
 
-# 2. Edit matome.toml and add your domains
+# 2. Add documentation sources
 matome add https://docs.python.org/
 matome add https://developer.mozilla.org/
 
-# 3. Crawl and translate
+# 3. Crawl documentation
 matome crawl
 
 # 4. Start the web server
@@ -33,6 +50,23 @@ matome serve
 ```
 
 Then open [http://127.0.0.1:8080](http://127.0.0.1:8080) in your browser.
+
+### Agent Mode (AI Coding Assistants)
+
+```bash
+# Export workspace for AI agent
+matome export --agent --workspace tokio-docs
+
+# AI agent can now read:
+# ~/.matome/workspaces/tokio-docs/
+# ├── index.json              # Table of contents
+# ├── runtime/
+# │   └── runtime.md          # Clean Markdown
+# └── _agent/
+#     ├── manifest.json       # Agent contract
+#     ├── CHANGELOG.md        # Recent changes
+#     └── token_budget.json  # Context optimization
+```
 
 ## 📦 Installation
 
@@ -57,6 +91,38 @@ cargo build --release
 - **Ollama** or **DeepL API key** (for translation, optional)
 - **SQLite** (bundled with rusqlite, no separate installation needed)
 
+## 🎯 Choose Your Workflow
+
+matome adapts to how you work with technical documentation:
+
+### 🔍 Library Mode (Default)
+
+> "Save your favorite docs locally, search instantly."
+
+```bash
+matome add https://docs.example.com
+matome serve  # Open http://localhost:8080
+```
+
+### 🔄 Diff Mode
+
+> "Get notified when docs change. Focus on what matters."
+
+```bash
+matome mode diff
+matome add --track https://lib.io/docs  # Enable version tracking
+matome status  # See what changed since last crawl
+```
+
+### 🤖 Agent Mode
+
+> "Export clean, chunked data for your AI coding assistant."
+
+```bash
+matome mode agent
+matome export --agent --workspace tokio-docs --max-tokens 80000
+```
+
 ## ⚙️ Configuration
 
 ### Initialize
@@ -73,31 +139,40 @@ This creates:
 
 ```toml
 [core]
-data-dir = ".matome"      # Where database and search index are stored
+data-dir = ".matome"
+default-mode = "library"  # library | diff | agent
 
-# Add your documentation sources
-[[domain]]
-url = "https://docs.python.org/"
-include = ["/**"]
-
-[[domain]]
-url = "https://developer.mozilla.org/"
-include = ["/**"]
-
-# Translation settings
 [translate]
 provider = "ollama"           # or "deepl", "none"
 model = "gemma3:4b"           # Ollama model name
 target-lang = "ja"            # Target language code
 glossary-file = "glossary.toml"
 
-# Crawling settings
 [crawl]
 concurrency = 8               # Parallel crawling threads
 respect-robots = true         # Follow robots.txt
 timeout = 30                 # Request timeout (seconds)
 max-pages = 0                 # 0 = unlimited, N = max pages
-# treat-subdomains-same = true  # Optional: docs.example.com = example.com
+
+[diff]
+track-changes = true
+alert-on-breaking = true
+
+[agent]
+workspace-dir = "~/.matome/workspaces"
+token-budget = 128000
+auto-generate-rules = true
+
+# Documentation sources
+[[domains]]
+url = "https://docs.python.org/"
+name = "python-docs"
+include = ["/**"]
+
+[[domains]]
+url = "https://developer.mozilla.org/"
+name = "mdn"
+include = ["/**"]
 ```
 
 ### Glossary
@@ -109,6 +184,7 @@ Create `glossary.toml` to maintain consistent terminology:
 [[terms]]
 en = "compiler"
 ja = "コンパイラ"
+priority = "high"      # Changes to priority terms trigger alerts
 
 [[terms]]
 en = "runtime"
@@ -122,79 +198,103 @@ translations = { ja = "API", zh = "API", ko = "API" }
 
 ## 📖 Commands
 
-### `matome init`
+### Core Commands
 
-Generate configuration templates in the current directory.
+| Command | Description |
+|---------|-------------|
+| `matome init` | Generate configuration templates |
+| `matome add <url>` | Add a domain to configuration |
+| `matome crawl` | Crawl and process documentation |
+| `matome serve` | Start the local web server |
+| `matome search <query>` | Full-text search |
+| `matome status` | Display statistics |
+| `matome clean` | Manage and clean the database |
 
+### Mode-Specific Commands
+
+#### Library Mode
 ```bash
-matome init                    # Create in current directory
-matome init --output /path    # Create in specific directory
+matome serve                        # Start web UI
+matome search "async runtime"       # Full-text search
 ```
 
-### `matome add`
-
-Add a domain to your configuration.
-
+#### Diff Mode
 ```bash
-matome add https://docs.example.com/
-matome add https://docs.example.com/ --include "/docs/**"
+matome mode diff                    # Switch to diff mode
+matome diff --since 2024-01-01      # Show changes since date
+matome status                       # Show change summary
 ```
 
-### `matome crawl`
-
-Crawl and translate documentation.
-
+#### Agent Mode
 ```bash
-matome crawl                        # Full crawl
-matome crawl --incremental          # Only new/changed pages
-matome crawl --concurrency 4       # Override concurrency
+matome mode agent                   # Switch to agent mode
+matome export --agent --workspace tokio-docs
+matome bundle --topics "runtime,sync" --max-tokens 80000
 ```
 
-### `matome serve`
-
-Start the local web server.
+### Admin Commands
 
 ```bash
-matome serve                        # Default: 127.0.0.1:8080
-matome serve --port 3000           # Custom port
-matome serve --host 0.0.0.0        # Bind address
-matome serve --data-dir .data      # Custom data directory
+matome mode <library|diff|agent>    # Switch operation mode
+matome config show                  # Show current config
+matome config edit                  # Edit configuration
+matome migrate                      # Run database migrations
 ```
 
-### `matome status`
+## 🤖 AI Agent Integration
 
-Display database statistics.
+### Supported Agents
 
-```bash
-matome status
-matome status --verbose             # Detailed statistics
+| Agent | Integration Method |
+|-------|-------------------|
+| **Claude Code** | `~/.matome/workspaces/` in CLAUDE.md |
+| **Cursor** | `.cursorrules` auto-generation |
+| **Aider** | `matome bundle` for context injection |
+| **VS Code Copilot** | `.copilot.rules` templates |
+
+### Workspace Structure
+
+```
+~/.matome/workspaces/{workspace_name}/
+├── index.json                  # TOC, paths, version, token estimate
+├── runtime/
+│   ├── _index.md              # Section overview
+│   ├── runtime.md             # Clean Markdown
+│   └── _agent/
+│       └── page_meta.json     # Token count, dependencies
+└── _agent/
+    ├── manifest.json           # Agent contract
+    ├── CHANGELOG.md           # Changes since last crawl
+    ├── token_budget.json      # Optimized reading order
+    ├── workspace.yaml         # Configuration
+    ├── claude.md              # Claude/Cursor rules
+    └── cursor.rules           # VS Code Copilot rules
 ```
 
-### `matome clean`
+### Agent Contract Example
 
-Manage and clean the database.
-
-```bash
-# Delete all articles
-matome clean --all
-
-# Delete articles from specific domain
-matome clean --domain developer.mozilla.org
-
-# Delete incomplete articles (missing title, translation, etc.)
-matome clean --orphaned
-
-# Delete specific article
-matome clean --id 123
+```json
+{
+  "workspace": "tokio-docs",
+  "source_url": "https://docs.rs/tokio/latest/tokio/",
+  "doc_version": "1.38.0",
+  "total_tokens_estimate": 185000,
+  "agent_contract": [
+    "Read index.json first for navigation",
+    "Code blocks are preserved verbatim; never rewrite",
+    "Check _agent/CHANGELOG.md for breaking changes"
+  ]
+}
 ```
 
 ## 🌐 Web Interface
 
-### Navigation
+### Library Mode UI
 
-- **Sidebar** - Browse by domain, search, navigation
-- **⌘K** - Open quick search modal
-- **Domain filtering** - Click domains in sidebar to filter
+- **Sidebar** - Hierarchical document tree navigation
+- **Breadcrumb** - Current location (Section → Page)
+- **⌘K** - Quick search modal
+- **Domain/Section filtering** - Click to filter
 
 ### Reading View
 
@@ -203,11 +303,11 @@ matome clean --id 123
 - Code blocks with syntax highlighting
 - Links to original articles
 
-### Search
+### Diff Mode UI
 
-- Full-text search across all articles (Tantivy)
-- Live search with HTMX
-- Domain-scoped searching via sidebar
+- **Change Summary** - Breaking/Major/Minor classification
+- **Glossary Alerts** - ⚠️ for priority term changes
+- **Diff View** - Side-by-side or inline comparison
 
 ## 🔧 Translation Providers
 
@@ -253,13 +353,18 @@ provider = "none"
 ```
 .matome/
 ├── matome.db              # SQLite database (WAL mode)
-│                         # Contains: id, url, title, description,
-│                         #          original_md, translated_md,
-│                         #          domain, crawled_at, updated_at
+│                         # Tables: documents, sections, pages, page_versions
 │
 ├── search_index/          # Tantivy full-text search index
 │
 └── .gitkeep             # Preserves directory structure
+
+~/.matome/workspaces/     # Agent mode exports
+└── {workspace_name}/
+    ├── index.json
+    ├── {sections}/
+    └── _agent/
+        └── manifest.json
 ```
 
 ## 📋 Documentation Sites Supported
@@ -276,15 +381,11 @@ Code blocks with nested elements (syntax highlighting `<span>` tags) are properl
 
 ### "Failed to acquire index lock"
 
-The search index is locked by another process. Stop any running `matome serve` instances:
+The search index is locked by another process:
 
 ```bash
 pkill matome
-```
-
-Or delete the lock file:
-
-```bash
+# Or delete the lock file:
 rm .matome/search_index/write.lock
 ```
 
@@ -313,7 +414,7 @@ matome crawl --concurrency 2
 
 ## 📋 Examples
 
-### Full Workflow
+### Full Library Workflow
 
 ```bash
 # 1. Initialize
@@ -340,25 +441,40 @@ matome crawl --concurrency 4
 matome serve
 ```
 
+### Change Tracking Workflow
+
+```bash
+# Enable version tracking
+matome mode diff
+matome add https://docs.rust-lang.org/
+
+# First crawl (establish baseline)
+matome crawl
+
+# Later - check for changes
+matome diff --since 2024-01-15
+```
+
+### Agent Export Workflow
+
+```bash
+# Export workspace for AI agent
+matome mode agent
+matome add https://docs.rs/tokio/latest/tokio/
+matome crawl
+
+# Export with token budget
+matome export --agent --workspace tokio-docs --max-tokens 80000
+
+# In Claude Code, add to CLAUDE.md:
+# "Always read ~/.matome/workspaces/tokio-docs/index.json before Tokio questions."
+```
+
 ### Incremental Update
 
 ```bash
 # Run daily to get new documentation
 matome crawl --incremental
-```
-
-### Clean and Rebuild
-
-```bash
-# Remove orphaned articles
-matome clean --orphaned
-
-# Remove all from a domain
-matome clean --domain old-docs.example.com
-
-# Start fresh
-matome clean --all
-matome crawl
 ```
 
 ## 📄 License

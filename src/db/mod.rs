@@ -3,10 +3,14 @@
 //! Handles SQLite storage and Tantivy full-text search.
 
 mod error;
+pub mod migration;
+pub mod models;
 pub mod search;
 mod sqlite;
 
 pub use error::DbError;
+pub use migration::{check_and_migrate, get_migration_status, MigrationStatus};
+pub use models::*;
 pub use search::SearchEngine;
 pub use sqlite::{ArticleRow, Database};
 

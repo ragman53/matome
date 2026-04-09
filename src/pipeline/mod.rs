@@ -6,10 +6,16 @@ mod crawler;
 mod extractor;
 mod translator;
 mod glossary;
+mod tree_inference;
+mod content_hash;
+mod change_detection;
 
 pub use crawler::{Crawler, CrawlerError};
 pub use extractor::Extractor;
 pub use translator::Translator;
+pub use tree_inference::{infer_tree_path, infer_breadcrumbs};
+pub use content_hash::compute_content_hash;
+pub use change_detection::compare_and_update;
 
 use crate::config::{Config, Domain};
 use crate::db::Database;
@@ -62,6 +68,10 @@ pub struct TranslatedPage {
     pub original_md: String,
     pub translated_md: String,
     pub domain: String,
+    // v0.2.0: hierarchical data
+    pub tree_path: String,
+    pub breadcrumbs: Vec<String>,
+    pub content_hash: String,
 }
 
 /// Pipeline execution report
@@ -87,15 +97,16 @@ pub struct Pipeline {
 }
 
 /// Context for processing a single page
-struct PageProcessContext<'a> {
+struct PageProcessContext {
     extractor: Extractor,
     translator: Option<Translator>,
     glossary: Option<Glossary>,
     search_engine: Option<Arc<SearchEngine>>,
-    db: &'a Database,
+    db: Database,
     semaphore: Arc<Semaphore>,
     domain_name: String,
     target_lang: String,
+    base_url: String, // v0.2.0: for tree_path inference
 }
 
 impl Pipeline {
@@ -163,10 +174,11 @@ impl Pipeline {
             translator: self.translator.clone(),
             glossary: self.glossary.clone(),
             search_engine: self.search_engine.clone(),
-            db: &self.db,
+            db: self.db.clone(),
             semaphore: self.concurrency.clone(),
             domain_name: domain.normalized_name(self.config.crawl.treat_subdomains_same),
             target_lang: self.config.translate.target_lang.clone(),
+            base_url: domain.url.clone(), // v0.2.0
         };
 
         let results = Self::process_pages(raw_pages, existing_urls, incremental, ctx).await;
@@ -177,7 +189,7 @@ impl Pipeline {
         if incremental { self.db.get_urls_by_domain(&domain.normalized_name(self.config.crawl.treat_subdomains_same)).unwrap_or_default() } else { std::collections::HashSet::new() }
     }
 
-    async fn process_pages(raw_pages: Vec<RawPage>, existing_urls: std::collections::HashSet<String>, incremental: bool, ctx: PageProcessContext<'_>) -> Vec<Result<(), PipelineError>> {
+    async fn process_pages(raw_pages: Vec<RawPage>, existing_urls: std::collections::HashSet<String>, incremental: bool, ctx: PageProcessContext) -> Vec<Result<(), PipelineError>> {
         let filtered: Vec<RawPage> = if incremental { raw_pages.into_iter().filter(|p| !existing_urls.contains(&p.url)).collect() } else { raw_pages };
         let total = filtered.len();
         
@@ -194,10 +206,11 @@ impl Pipeline {
                 translator: ctx.translator.clone(),
                 glossary: ctx.glossary.clone(),
                 search_engine: ctx.search_engine.clone(),
-                db: ctx.db,
+                db: ctx.db.clone(),
                 semaphore: ctx.semaphore.clone(),
                 domain_name: ctx.domain_name.clone(),
                 target_lang: ctx.target_lang.clone(),
+                base_url: ctx.base_url.clone(), // v0.2.0
             };
             async move {
                 let i = i + 1;
@@ -210,7 +223,7 @@ impl Pipeline {
         results
     }
 
-    async fn process_single_page(raw_page: RawPage, ctx: &PageProcessContext<'_>) -> Result<(), PipelineError> {
+    async fn process_single_page(raw_page: RawPage, ctx: &PageProcessContext) -> Result<(), PipelineError> {
         let _permit = ctx.semaphore.acquire().await;
         
         let extracted = ctx.extractor.extract(&raw_page.html, &raw_page.url)
@@ -228,6 +241,11 @@ impl Pipeline {
             .map(|g| g.apply_for_lang(&translated_md, &ctx.target_lang))
             .unwrap_or(translated_md);
 
+        // v0.2.0: Compute hierarchical data
+        let tree_path = infer_tree_path(&raw_page.url, &ctx.base_url);
+        let breadcrumbs = infer_breadcrumbs(&tree_path);
+        let content_hash = compute_content_hash(&final_md);
+
         let page = TranslatedPage {
             url: raw_page.url.clone(),
             title: extracted.title.clone(),
@@ -235,6 +253,9 @@ impl Pipeline {
             original_md: extracted.markdown,
             translated_md: final_md.clone(),
             domain: ctx.domain_name.clone(),
+            tree_path,
+            breadcrumbs,
+            content_hash,
         };
 
         ctx.db.save_article(&page).map_err(|e| PipelineError::Storage(e.to_string()))?;

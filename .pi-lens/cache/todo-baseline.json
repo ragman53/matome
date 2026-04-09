@@ -1,3 +1,18 @@
 {
-  "items": []
+  "items": [
+    {
+      "type": "TODO",
+      "message": "Integrate with glossary.rs to check priority terms",
+      "file": "src/pipeline/change_detection.rs",
+      "line": 96,
+      "column": 7
+    },
+    {
+      "type": "TODO",
+      "message": "When migrating to pages table, use tree_path",
+      "file": "src/web/handlers.rs",
+      "line": 303,
+      "column": 7
+    }
+  ]
 }

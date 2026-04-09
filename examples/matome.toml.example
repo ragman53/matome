@@ -1,0 +1,52 @@
+# matome configuration example
+# v0.2.0: Three-mode architecture
+
+[core]
+data-dir = ".matome"
+default-mode = "library"  # library | diff | agent
+
+# Documentation sources
+[[domains]]
+url = "https://docs.rust-lang.org/"
+name = "rust-book"
+include = ["/**"]
+
+[[domains]]
+url = "https://docs.rs/tokio/latest/tokio/"
+name = "tokio-docs"
+include = ["/**"]
+
+[translate]
+provider = "ollama"           # or "deepl", "none"
+model = "gemma3:4b"           # Ollama model name
+target-lang = "ja"            # Target language code
+glossary-file = "glossary.toml"
+
+[crawl]
+concurrency = 8               # Parallel crawling threads
+respect-robots = true         # Follow robots.txt
+timeout = 30                 # Request timeout (seconds)
+max-pages = 0                 # 0 = unlimited
+
+[diff]
+track-changes = true          # Enable version tracking
+alert-on-breaking = true     # Alert when glossary terms change
+
+[agent]
+workspace-dir = "~/.matome/workspaces"
+token-budget = 128000         # Context window limit
+auto-generate-rules = true    # Generate .cursorrules, CLAUDE.md
+
+# v0.2.0: Three-Mode Architecture
+# 
+# Library Mode (default): Local web portal with tree navigation
+#   - matome serve        # Start web UI
+#   - matome search       # Full-text search
+# 
+# Diff Mode: Change detection and alerts
+#   - matome mode diff    # Switch mode
+#   - matome diff         # Show changes
+# 
+# Agent Mode: AI coding assistant workspace export
+#   - matome mode agent   # Switch mode
+#   - matome export --agent --workspace my-docs
