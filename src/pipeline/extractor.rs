@@ -203,27 +203,22 @@ impl Extractor {
     }
 
     fn process_code(&self, element: ElementRef, output: &mut String) {
-        let is_block = element
-            .parent()
-            .and_then(|p| ElementRef::wrap(p))
-            .map(|e| e.value().name() == "pre")
-            .unwrap_or(false);
+        // Check if this <code> element is inside a <pre> block
+        let is_in_pre = element
+            .ancestors()
+            .filter_map(|p| ElementRef::wrap(p))
+            .any(|e| e.value().name() == "pre");
 
-        if is_block {
-            output.push('\n');
-            output.push_str("```\n");
-            for child in element.children() {
-                if let Some(text) = child.value().as_text() {
-                    output.push_str(text.trim());
-                    output.push('\n');
-                }
-            }
-            output.push_str("```\n");
-        } else {
-            output.push('`');
+        // Skip code blocks inside <pre> - let process_pre handle them
+        if is_in_pre {
+            // Just process the text content without adding markdown fences
             self.process_text_children(element, output);
-            output.push('`');
+            return;
         }
+
+        output.push('`');
+        self.process_text_children(element, output);
+        output.push('`');
     }
 
     fn process_pre(&self, element: ElementRef, output: &mut String) {
@@ -368,24 +363,27 @@ impl Extractor {
             }
         }
 
-        if let Some(first_row) = rows.first() {
-            let col_count = first_row.len();
+        if !rows.is_empty() {
+            let col_count = rows[0].len();
+
+            // First row: header row
+            for cell in &rows[0] {
+                output.push_str(&format!("| {} ", cell));
+            }
+            output.push_str("|\n");
+
+            // Second row: header separator
             for _ in 0..col_count {
                 output.push_str("| --- ");
             }
             output.push_str("|\n");
 
-            for (i, row) in rows.iter().enumerate() {
+            // Remaining rows: data rows
+            for row in rows.iter().skip(1) {
                 for cell in row {
                     output.push_str(&format!("| {} ", cell));
                 }
                 output.push_str("|\n");
-                if i == 0 {
-                    for _ in 0..col_count {
-                        output.push_str("| --- ");
-                    }
-                    output.push_str("|\n");
-                }
             }
             output.push('\n');
         }
