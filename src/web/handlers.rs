@@ -89,10 +89,18 @@ fn get_domain_count(articles: &[ArticleRow]) -> usize {
 /// Generate article list HTML
 fn render_article_list(articles: &[ArticleRow]) -> String {
     if articles.is_empty() {
-        return r#"<div class="empty-state col-span-full text-center">
-            <div class="text-5xl mb-4">📭</div>
-            <p class="text-lg text-[var(--text-secondary)]">記事が見つかりません</p>
-            <p class="text-sm text-[var(--text-muted)] mt-2"><code>matome crawl</code> を実行してドキュメントを収集してください</p>
+        return r#"<div class="col-span-full flex flex-col items-center justify-center py-20 px-6">
+            <div class="text-8xl mb-6 opacity-50">📚</div>
+            <h3 class="text-2xl font-semibold text-[var(--text-primary)] mb-3">ドキュメントがありません</h3>
+            <p class="text-[var(--text-secondary)] mb-6 text-center max-w-md">
+                まだドキュメントがクロールされていません。<br>
+                以下のコマンドでドキュメントを追加できます：
+            </p>
+            <div class="bg-[var(--bg-tertiary)] rounded-lg p-4 font-mono text-sm text-[var(--text-primary)] max-w-full overflow-x-auto">
+                <code class="text-[var(--accent-cool)]">$</code> matome add &lt;url&gt;<br>
+                <code class="text-[var(--accent-cool)]">$</code> matome crawl<br>
+                <code class="text-[var(--accent-cool)]">$</code> matome serve
+            </div>
         </div>"#.to_string();
     }
     articles.iter().enumerate().map(|(i, a)| {
@@ -279,6 +287,18 @@ pub struct ArticleJson {
 
 // v0.2.0: Tree navigation imports
 use crate::web::tree_nav::{build_tree_from_paths, render_tree_nav, render_breadcrumbs};
+use crate::db::models::Page;
+
+/// JSON output for API
+#[derive(serde::Serialize)]
+pub struct PageJson {
+    id: String,
+    url: String,
+    title: String,
+    tree_path: String,
+    domain: String,
+    crawled_at: String,
+}
 
 pub async fn api_articles(State(state): State<Arc<AppState>>) -> Result<Json<Vec<ArticleJson>>, HandlerError> {
     let articles = state.db.get_all_articles().map_err(|e| HandlerError::Database(e.to_string()))?;
@@ -294,72 +314,149 @@ pub async fn api_articles(State(state): State<Arc<AppState>>) -> Result<Json<Vec
 
 // ============== v0.2.0 Tree Navigation Handlers ==============
 
-/// Get tree structure as JSON
+/// Get tree structure as JSON (v0.2.0 - uses pages table)
 pub async fn api_tree(State(state): State<Arc<AppState>>) -> Result<Json<Vec<crate::db::models::TreeNode>>, HandlerError> {
-    // Get all articles and build tree
-    let articles = state.db.get_all_articles().map_err(|e| HandlerError::Database(e.to_string()))?;
+    // Try to get pages from new v0.2.0 model
+    let paths_result = state.db.get_pages_with_tree();
     
-    // For now, use domain as path (flat data fallback)
-    // TODO: When migrating to pages table, use tree_path
-    let paths: Vec<(String, String)> = articles.iter().map(|a| {
-        let path = format!("/{}/{}", a.domain, a.id);
-        let title = a.title.clone().unwrap_or_else(|| "Untitled".to_string());
-        (path, title)
-    }).collect();
+    let paths: Vec<(String, String)> = match paths_result {
+        Ok(pages_paths) if !pages_paths.is_empty() => {
+            // Use pages table data (v0.2.0)
+            tracing::debug!("Using {} pages for tree", pages_paths.len());
+            pages_paths
+        }
+        _ => {
+            // Fallback to articles table (v0.1.0)
+            let articles = state.db.get_all_articles().map_err(|e| HandlerError::Database(e.to_string()))?;
+            tracing::debug!("Using {} articles for tree (fallback)", articles.len());
+            articles.iter().map(|a| {
+                let path = format!("/{}/{}", a.domain, a.id);
+                let title = a.title.clone().unwrap_or_else(|| "Untitled".to_string());
+                (path, title)
+            }).collect()
+        }
+    };
     
     let tree = build_tree_from_paths(&paths);
     Ok(Json(tree))
 }
 
-/// Root tree page - shows all documents
+/// Get pages as JSON (v0.2.0 API)
+pub async fn api_pages(State(state): State<Arc<AppState>>) -> Result<Json<Vec<PageJson>>, HandlerError> {
+    let pages = state.db.get_all_pages().map_err(|e| HandlerError::Database(e.to_string()))?;
+    let json: Vec<PageJson> = pages.into_iter().map(|p| {
+        // Extract domain from URL
+        let domain = extract_domain_from_url(&p.url);
+        PageJson {
+            id: p.id,
+            url: p.url,
+            title: p.title,
+            tree_path: p.tree_path,
+            domain,
+            crawled_at: p.crawled_at,
+        }
+    }).collect();
+    Ok(Json(json))
+}
+
+/// Extract domain from URL
+fn extract_domain_from_url(url: &str) -> String {
+    url.split("://").nth(1)
+        .unwrap_or(url)
+        .split('/')
+        .next()
+        .unwrap_or(url)
+        .to_string()
+}
+
+/// Root tree page - shows all documents (v0.2.0)
 pub async fn tree_root(State(state): State<Arc<AppState>>) -> Result<Html<String>, HandlerError> {
-    let articles = state.db.get_all_articles().map_err(|e| HandlerError::Database(e.to_string()))?;
-    let tree_html = render_tree_html(&articles);
-    let content = render_article_list(&articles);
+    // Try pages table first, fallback to articles
+    let (count, tree_html, content) = match state.db.get_pages_with_tree() {
+        Ok(paths) if !paths.is_empty() => {
+            // Use pages table (v0.2.0)
+            let tree = build_tree_from_paths(&paths);
+            let tree_html = render_tree_nav(&tree, 0);
+            let pages = state.db.get_all_pages().map_err(|e| HandlerError::Database(e.to_string()))?;
+            let content = render_page_list(&pages);
+            (pages.len(), tree_html, content)
+        }
+        _ => {
+            // Fallback to articles (v0.1.0)
+            let articles = state.db.get_all_articles().map_err(|e| HandlerError::Database(e.to_string()))?;
+            let tree_html = render_tree_html_from_articles(&articles);
+            let content = render_article_list(&articles);
+            (articles.len(), tree_html, content)
+        }
+    };
+    
+    let domain_count = state.db.get_domain_counts().unwrap_or_default().len();
     
     Ok(Html(render_template(INDEX_TEMPLATE, &[
-        ("count", &articles.len().to_string()),
+        ("count", &count.to_string()),
         ("content", &content),
         ("domain_nav", &tree_html),
-        ("domain_count", &get_domain_count(&articles).to_string()),
+        ("domain_count", &domain_count.to_string()),
     ])))
 }
 
-/// Tree page at specific path
+/// Tree page at specific path (v0.2.0)
 pub async fn tree_page(
     State(state): State<Arc<AppState>>,
     Path(path): Path<String>,
 ) -> Result<Html<String>, HandlerError> {
-    let articles = state.db.get_all_articles().map_err(|e| HandlerError::Database(e.to_string()))?;
     let path_with_slash = format!("/{}", path);
-    let breadcrumbs_html = render_breadcrumbs(&path_with_slash);
+    let _breadcrumbs_html = render_breadcrumbs(&path_with_slash); // TODO: Pass to template
     
-    // Filter articles that match this tree path
-    let filtered: Vec<ArticleRow> = articles.iter()
-        .filter(|a| a.url.contains(&path_with_slash))
-        .cloned()
-        .collect();
-    
-    let content = if filtered.is_empty() {
-        render_article_list(&articles)
-    } else {
-        render_article_list(&filtered)
+    // Try pages table first
+    let (filtered, all_content, tree_html, domain_count) = match state.db.get_pages_with_tree() {
+        Ok(paths) if !paths.is_empty() => {
+            let pages = state.db.get_all_pages().map_err(|e| HandlerError::Database(e.to_string()))?;
+            let tree = build_tree_from_paths(&paths);
+            let tree_html = render_tree_nav(&tree, 0);
+            
+            // Filter pages by tree_path prefix
+            let filtered: Vec<Page> = pages.iter()
+                .filter(|p| p.tree_path.starts_with(&path_with_slash))
+                .cloned()
+                .collect();
+            
+            let content = if filtered.is_empty() {
+                render_page_list(&pages)
+            } else {
+                render_page_list(&filtered)
+            };
+            
+            (filtered.len(), content, tree_html, state.db.get_domain_counts().unwrap_or_default().len())
+        }
+        _ => {
+            // Fallback to articles
+            let articles = state.db.get_all_articles().map_err(|e| HandlerError::Database(e.to_string()))?;
+            let filtered: Vec<ArticleRow> = articles.iter()
+                .filter(|a| a.url.contains(&path_with_slash))
+                .cloned()
+                .collect();
+            let tree_html = render_tree_html_from_articles(&articles);
+            let content = if filtered.is_empty() {
+                render_article_list(&articles)
+            } else {
+                render_article_list(&filtered)
+            };
+            (filtered.len(), content, tree_html, get_domain_count(&articles))
+        }
     };
     
-    // Return with modified template - for now just render article list
     Ok(Html(render_template(INDEX_TEMPLATE, &[
-        ("count", &filtered.len().to_string()),
-        ("content", &content),
-        ("domain_nav", &render_tree_html(&articles)),
-        ("domain_count", &get_domain_count(&articles).to_string()),
+        ("count", &filtered.to_string()),
+        ("content", &all_content),
+        ("domain_nav", &tree_html),
+        ("domain_count", &domain_count.to_string()),
     ])))
 }
 
-/// Render tree navigation HTML from articles
-fn render_tree_html(articles: &[ArticleRow]) -> String {
-    // Build path-title pairs from articles
+/// Render tree navigation HTML from articles (fallback)
+fn render_tree_html_from_articles(articles: &[ArticleRow]) -> String {
     let paths: Vec<(String, String)> = articles.iter().map(|a| {
-        // Use domain as top-level path
         let path = format!("/{}/{}", a.domain, a.id);
         let title = a.title.clone().unwrap_or_else(|| "Untitled".to_string());
         (path, title)
@@ -367,6 +464,34 @@ fn render_tree_html(articles: &[ArticleRow]) -> String {
     
     let tree = build_tree_from_paths(&paths);
     render_tree_nav(&tree, 0)
+}
+
+/// Render page list HTML (v0.2.0)
+fn render_page_list(pages: &[Page]) -> String {
+    if pages.is_empty() {
+        return r#"<div class="empty-state col-span-full text-center">
+            <div class="text-5xl mb-4">📭</div>
+            <p class="text-lg text-[var(--text-secondary)]">ページが見つかりません</p>
+        </div>"#.to_string();
+    }
+    
+    pages.iter().enumerate().map(|(i, p)| {
+        let domain = extract_domain_from_url(&p.url);
+        format!(
+            r#"<a href="/page/{}" class="article-card" style="animation-delay: {}ms">
+                <div class="p-5">
+                    <span class="domain-badge">{}</span>
+                    <h3 class="card-title mt-3 font-semibold text-[var(--text-primary)] line-clamp-2 transition-colors">{}</h3>
+                    <p class="mt-2 text-sm text-[var(--text-secondary)] line-clamp-2">{}</p>
+                </div>
+            </a>"#,
+            i, // Note: Need page ID mapping
+            i * 50,
+            domain,
+            p.title,
+            p.tree_path
+        )
+    }).collect::<Vec<_>>().join("\n")
 }
 
 
@@ -377,10 +502,9 @@ pub async fn diff_page(State(state): State<Arc<AppState>>) -> Result<Html<String
     use crate::pipeline::compute_content_hash;
     
     let articles = state.db.get_all_articles().map_err(|e| HandlerError::Database(e.to_string()))?;
-    let articles_clone = articles.clone();
     
     let mut changes: Vec<ChangeSummaryHtml> = Vec::new();
-    for article in articles {
+    for article in articles.iter().cloned() {
         let _hash = compute_content_hash(&article.original_md);
         changes.push(ChangeSummaryHtml {
             id: article.id,
@@ -394,12 +518,14 @@ pub async fn diff_page(State(state): State<Arc<AppState>>) -> Result<Html<String
     }
     
     let content = render_diff_list(&changes);
+    let tree_html = render_tree_html_from_articles(&articles);
+    let domain_count = get_domain_count(&articles);
     
     Ok(Html(render_template(INDEX_TEMPLATE, &[
         ("count", &changes.len().to_string()),
         ("content", &content),
-        ("domain_nav", &render_tree_html(&articles_clone)),
-        ("domain_count", &get_domain_count(&articles_clone).to_string()),
+        ("domain_nav", &tree_html),
+        ("domain_count", &domain_count.to_string()),
     ])))
 }
 
@@ -410,7 +536,7 @@ pub async fn api_changes(State(state): State<Arc<AppState>>) -> Result<Json<Vec<
     let articles = state.db.get_all_articles().map_err(|e| HandlerError::Database(e.to_string()))?;
     
     let changes: Vec<ChangeSummaryJson> = articles.iter().map(|a| {
-        let hash = compute_content_hash(&a.original_md);
+        let _hash = compute_content_hash(&a.original_md);
         ChangeSummaryJson {
             id: a.id,
             title: a.title.clone().unwrap_or_else(|| "Untitled".to_string()),

@@ -99,7 +99,7 @@ pub fn render_tree_nav(nodes: &[TreeNode], depth: usize) -> String {
 
     for node in nodes {
         let indent = "  ".repeat(depth);
-        let path_id = format!("tree-{}", node.path.replace('/', "-"));
+        let _path_id = format!("tree-{}", node.path.replace('/', "-"));
         let has_children = !node.children.is_empty();
 
         if has_children {

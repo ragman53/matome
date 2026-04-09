@@ -15,7 +15,6 @@ pub use extractor::Extractor;
 pub use translator::Translator;
 pub use tree_inference::{infer_tree_path, infer_breadcrumbs};
 pub use content_hash::compute_content_hash;
-pub use change_detection::compare_and_update;
 
 use crate::config::{Config, Domain};
 use crate::db::Database;

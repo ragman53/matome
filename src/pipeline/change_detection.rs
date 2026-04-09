@@ -90,7 +90,7 @@ fn classify_change(old_content: &str, new_content: &str) -> ChangeType {
 }
 
 /// Detect glossary priority term changes
-fn detect_glossary_changes(old_content: &str, new_content: &str) -> Vec<String> {
+fn detect_glossary_changes(_old_content: &str, _new_content: &str) -> Vec<String> {
     // This is a placeholder - actual implementation would check against glossary
     // For now, return empty vec
     // TODO: Integrate with glossary.rs to check priority terms

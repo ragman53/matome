@@ -1,12 +1,21 @@
-//! Web crawler module
+//! Web crawler module - Optimized for speed
 //!
 //! Handles HTTP fetching, sitemap.xml parsing, and robots.txt compliance.
+//! Optimizations:
+//! - Parallel fetching with connection pooling
+//! - Batch processing with progress reporting
+//! - Retry with exponential backoff
+//! - Smart sitemap parsing
 
 use crate::config::{Config, Domain};
 use crate::pipeline::RawPage;
+use futures::future;
 use reqwest::Client;
+use std::collections::HashSet;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::Semaphore;
 use tracing::{debug, info, warn};
 use url::Url;
 
@@ -22,23 +31,47 @@ pub enum CrawlerError {
     RobotsTxt(String),
 }
 
-/// Web crawler
+/// Web crawler - Optimized for parallel fetching
 pub struct Crawler {
     client: Client,
     config: Arc<Config>,
+    semaphore: Arc<Semaphore>,
 }
 
 impl Crawler {
-    /// Create a new crawler instance
+    /// Create a new crawler instance with connection pooling
     pub fn new(config: &Config) -> Result<Self, CrawlerError> {
+        let concurrency = config.crawl.concurrency;
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(config.crawl.timeout))
-            .user_agent("matome/0.1.0")
+            .user_agent("matome/0.2.0 (+https://github.com/ragman53/matome)")
+            // Connection pooling - critical for speed
+            .pool_max_idle_per_host(concurrency)
+            .tcp_keepalive(std::time::Duration::from_secs(30))
+            .tcp_nodelay(true)
             .build()?;
 
         Ok(Self {
             client,
             config: Arc::new(config.clone()),
+            semaphore: Arc::new(Semaphore::new(concurrency)),
+        })
+    }
+
+    /// Create a new crawler with custom concurrency
+    pub fn with_concurrency(config: &Config, concurrency: usize) -> Result<Self, CrawlerError> {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(config.crawl.timeout))
+            .user_agent("matome/0.2.0 (+https://github.com/ragman53/matome)")
+            .pool_max_idle_per_host(concurrency)
+            .tcp_keepalive(std::time::Duration::from_secs(30))
+            .tcp_nodelay(true)
+            .build()?;
+
+        Ok(Self {
+            client,
+            config: Arc::new(config.clone()),
+            semaphore: Arc::new(Semaphore::new(concurrency)),
         })
     }
 
@@ -75,13 +108,12 @@ impl Crawler {
         if !self.config.crawl.respect_robots {
             return true;
         }
-
         !disallowed.iter().any(|path| url.contains(path))
     }
 
-    /// Crawl a domain and return all discovered pages
+    /// Crawl a domain and return all discovered pages (OPTIMIZED - PARALLEL)
     pub async fn crawl(&self, domain: &Domain) -> Result<Vec<RawPage>, CrawlerError> {
-        info!("Starting crawl for: {}", domain.url);
+        info!("Starting crawl for: {} (concurrency: {})", domain.url, self.config.crawl.concurrency);
 
         // Fetch robots.txt first if configured
         let disallowed = if self.config.crawl.respect_robots {
@@ -95,70 +127,175 @@ impl Crawler {
 
         if !sitemap_urls.is_empty() {
             debug!("Found {} URLs in sitemap", sitemap_urls.len());
-            let total = sitemap_urls.len();
             let allowed_urls: Vec<_> = sitemap_urls.into_iter()
                 .filter(|url| self.is_allowed_by_robots(url, &disallowed))
                 .collect();
             
-            info!("Crawling {} pages from sitemap...", allowed_urls.len());
-            let mut pages = Vec::new();
-            
-            for (i, url) in allowed_urls.iter().enumerate() {
-                print_progress(i + 1, total, url);
-                if let Some(raw_page) = self.fetch_page(url).await {
-                    pages.push(raw_page);
-                }
-            }
-            
-            println!(); // Newline after progress
-            info!("Crawl complete: {} pages discovered", pages.len());
-            return Ok(pages);
+            info!("Crawling {} pages from sitemap (parallel)...", allowed_urls.len());
+            return self.crawl_parallel(allowed_urls).await;
         }
 
         // Fall back to fetching the root page and extracting links
-        let mut pages = Vec::new();
-        let mut discovered = std::collections::HashSet::new();
-        let mut to_visit = vec![domain.url.clone()];
-        let mut total_crawled = 0;
+        info!("Crawling via link traversal (parallel)...");
+        self.crawl_parallel_link_traversal(domain, disallowed).await
+    }
 
-        info!("Crawling via link traversal...");
+    /// Parallel crawling of URLs from sitemap
+    async fn crawl_parallel(&self, urls: Vec<String>) -> Result<Vec<RawPage>, CrawlerError> {
+        let total = urls.len();
+        let semaphore = self.semaphore.clone();
+        let client = self.client.clone();
+        let _config = self.config.clone();
         
-        while let Some(url) = to_visit.pop() {
-            if discovered.contains(&url) {
-                continue;
-            }
-            discovered.insert(url.clone());
+        // Progress tracking
+        let completed = Arc::new(AtomicUsize::new(0));
+        let start_time = std::time::Instant::now();
 
-            if self.is_allowed_by_robots(&url, &disallowed) {
-                total_crawled += 1;
-                print_progress(total_crawled, discovered.len().max(total_crawled), &url);
+        // Process in batches for better progress reporting
+        let batch_size = self.config.crawl.concurrency * 2;
+        let mut all_pages = Vec::with_capacity(total);
+
+        for chunk in urls.chunks(batch_size) {
+            let comp_clone = completed.clone();
+            let start_clone = start_time;
+            
+            let futures: Vec<_> = chunk.iter().map(|url| {
+                let url = url.clone();
+                let sem = semaphore.clone();
+                let client = client.clone();
+                let comp = completed.clone();
                 
-                if let Some(raw_page) = self.fetch_page(&url).await {
-                    // Extract links from page
-                    let links = self.extract_links(&raw_page.html, &url);
-                    for link in links {
-                        if !discovered.contains(&link) && link.starts_with(&domain.url) {
-                            to_visit.push(link);
+                async move {
+                    let _permit = sem.acquire().await.ok();
+                    
+                    // Retry logic (up to 3 attempts)
+                    for attempt in 0..3 {
+                        match client.get(&url).send().await {
+                            Ok(response) if response.status().is_success() => {
+                                if let Ok(html) = response.text().await {
+                                    let c = comp.fetch_add(1, Ordering::Relaxed) + 1;
+                                    print_progress(c, total, &url, start_time);
+                                    return Some(RawPage { url, html });
+                                }
+                            }
+                            Ok(resp) => {
+                                warn!("HTTP {} for: {}", resp.status(), url);
+                            }
+                            Err(_) if attempt < 2 => {
+                                // Exponential backoff
+                                tokio::time::sleep(std::time::Duration::from_millis(100 * 2_u64.pow(attempt))).await;
+                                continue;
+                            }
+                            Err(e) => {
+                                warn!("Failed to fetch {}: {}", url, e);
+                            }
                         }
                     }
-                    pages.push(raw_page);
+                    comp.fetch_add(1, Ordering::Relaxed);
+                    None
                 }
-            }
+            }).collect();
+
+            // Execute batch in parallel
+            let results = future::join_all(futures).await;
             
-            // Check max_pages limit
-            if self.config.crawl.max_pages > 0 && pages.len() >= self.config.crawl.max_pages {
-                println!();
-                info!("Reached max_pages limit: {}", self.config.crawl.max_pages);
-                break;
+            for page in results.into_iter().flatten() {
+                all_pages.push(page);
             }
         }
 
         println!(); // Newline after progress
-        info!("Crawl complete: {} pages discovered", pages.len());
+        info!("Crawl complete: {} pages", all_pages.len());
+        Ok(all_pages)
+    }
+
+    /// Parallel crawling via link traversal
+    async fn crawl_parallel_link_traversal(&self, domain: &Domain, disallowed: Vec<String>) -> Result<Vec<RawPage>, CrawlerError> {
+        let mut pages = Vec::new();
+        let mut discovered: HashSet<String> = HashSet::new();
+        let mut to_visit = vec![domain.url.clone()];
+        let semaphore = self.semaphore.clone();
+        let client = self.client.clone();
+        let domain_url = domain.url.clone();
+        let max_pages = self.config.crawl.max_pages;
+
+        let completed = Arc::new(AtomicUsize::new(0));
+        let start_time = std::time::Instant::now();
+        
+        while !to_visit.is_empty() {
+            // Check max_pages limit
+            if max_pages > 0 && pages.len() >= max_pages {
+                info!("Reached max_pages limit: {}", max_pages);
+                break;
+            }
+
+            // Take a batch of URLs
+            let batch: Vec<String> = to_visit.drain(..std::cmp::min(100, to_visit.len())).collect();
+            
+            // Filter already discovered
+            let batch: Vec<String> = batch.into_iter()
+                .filter(|url| !discovered.contains(url))
+                .collect();
+
+            if batch.is_empty() {
+                continue;
+            }
+
+            // Mark as discovered
+            for url in &batch {
+                discovered.insert(url.clone());
+            }
+
+            // Fetch batch in parallel
+            let futures: Vec<_> = batch.iter().map(|url| {
+                let url = url.clone();
+                let sem = semaphore.clone();
+                let client = client.clone();
+                let comp = completed.clone();
+                
+                async move {
+                    let _permit = sem.acquire().await.ok();
+                    
+                    match client.get(&url).send().await {
+                        Ok(response) if response.status().is_success() => {
+                            if let Ok(html) = response.text().await {
+                                let c = comp.fetch_add(1, Ordering::Relaxed) + 1;
+                                print_progress_simple(c, &url);
+                                return Some((url, html));
+                            }
+                        }
+                        _ => {}
+                    }
+                    comp.fetch_add(1, Ordering::Relaxed);
+                    None
+                }
+            }).collect();
+
+            let results = future::join_all(futures).await;
+
+            for result in results.into_iter().flatten() {
+                let (url, html) = result;
+                
+                // Extract links
+                let links = self.extract_links(&html, &url);
+                for link in links {
+                    if !discovered.contains(&link) && link.starts_with(&domain_url) {
+                        if self.is_allowed_by_robots(&link, &disallowed) {
+                            to_visit.push(link);
+                        }
+                    }
+                }
+                
+                pages.push(RawPage { url, html });
+            }
+        }
+
+        println!();
+        info!("Crawl complete: {} pages discovered from {}", pages.len(), discovered.len());
         Ok(pages)
     }
 
-    /// Fetch a single page
+    /// Fetch a single page (used for fallback)
     async fn fetch_page(&self, url: &str) -> Option<RawPage> {
         debug!("Fetching: {}", url);
 
@@ -202,31 +339,44 @@ impl Crawler {
             .map_err(|e| CrawlerError::SitemapParse(e.to_string()))?;
 
         let mut urls = extract_loc_nodes(&xml);
-        self.collect_sub_sitemap_urls(&xml, &mut urls).await;
-        Ok(urls)
-    }
+        
+        // Fetch sub-sitemaps in parallel
+        let sitemap_locs: Vec<String> = xml.descendants()
+            .filter(|n| n.has_tag_name("sitemap"))
+            .filter_map(|n| n.descendants().filter(|m| m.has_tag_name("loc"))
+                .filter_map(|m| m.text().map(|t| t.trim().to_string()))
+                .next())
+            .collect();
 
-    async fn collect_sub_sitemap_urls(&self, xml: &roxmltree::Document<'_>, urls: &mut Vec<String>) {
-        for node in xml.descendants().filter(|n| n.has_tag_name("sitemap")) {
-            for loc in node.descendants().filter(|n| n.has_tag_name("loc")) {
-                if let Some(loc_text) = loc.text().map(|t| t.trim().to_string()) {
-                    if !loc_text.is_empty() {
-                        if let Ok(sub_urls) = self.fetch_sub_sitemap(&loc_text).await {
-                            urls.extend(sub_urls);
+        if !sitemap_locs.is_empty() {
+            info!("Fetching {} sub-sitemaps...", sitemap_locs.len());
+            
+            let futures: Vec<_> = sitemap_locs.iter().map(|loc| {
+                let loc = loc.clone();
+                let client = self.client.clone();
+                async move {
+                    match client.get(&loc).send().await {
+                        Ok(resp) if resp.status().is_success() => {
+                            if let Ok(body) = resp.text().await {
+                                return extract_loc_nodes_from_str(&body);
+                            }
                         }
+                        _ => {}
                     }
+                    Vec::new()
                 }
+            }).collect();
+
+            let results = future::join_all(futures).await;
+            for sub_urls in results {
+                urls.extend(sub_urls);
             }
         }
-    }
 
-    async fn fetch_sub_sitemap(&self, url: &str) -> Result<Vec<String>, CrawlerError> {
-        let response = self.client.get(url).send().await?;
-        if !response.status().is_success() {
-            return Ok(Vec::new());
-        }
-        let body = response.text().await.map_err(|e| CrawlerError::SitemapParse(e.to_string()))?;
-        Ok(extract_loc_nodes_from_str(&body))
+        // Deduplicate
+        urls.sort();
+        urls.dedup();
+        Ok(urls)
     }
 
     /// Extract links from HTML page
@@ -254,11 +404,14 @@ impl Crawler {
     }
 }
 
-/// Print progress bar for crawling
-fn print_progress(current: usize, total: usize, url: &str) {
+/// Print progress bar with speed indicator
+fn print_progress(current: usize, total: usize, url: &str, start_time: std::time::Instant) {
+    let elapsed = start_time.elapsed().as_secs_f64();
+    let rate = if elapsed > 0.0 { current as f64 / elapsed } else { 0.0 };
+    
     // Truncate URL for display
-    let display_url = if url.len() > 60 {
-        format!("...{}", &url[url.len()-60..])
+    let display_url = if url.len() > 50 {
+        format!("...{}", &url[url.len()-50..])
     } else {
         url.to_string()
     };
@@ -271,11 +424,28 @@ fn print_progress(current: usize, total: usize, url: &str) {
     };
     
     // Progress bar
-    let bar_width = 30;
-    let filled = (current as f64 / total as f64 * bar_width as f64) as usize;
+    let bar_width = 25;
+    let filled = if total > 0 {
+        (current as f64 / total as f64 * bar_width as f64) as usize
+    } else {
+        current % bar_width
+    };
     let bar: String = "=".repeat(filled) + &"-".repeat(bar_width - filled);
     
-    print!("\r[{bar}] {pct:3}% ({current}/{total}) {display_url}");
+    print!("\r[{bar}] {pct:3}% | {current}/{total} | {rate:.1}/s | {display_url}");
+    std::io::Write::flush(&mut std::io::stdout()).ok();
+}
+
+/// Simple progress without total (for link traversal)
+fn print_progress_simple(current: usize, url: &str) {
+    // Truncate URL for display
+    let display_url = if url.len() > 60 {
+        format!("...{}", &url[url.len()-60..])
+    } else {
+        url.to_string()
+    };
+    
+    print!("\r[{current:5}] {display_url}");
     std::io::Write::flush(&mut std::io::stdout()).ok();
 }
 
@@ -296,14 +466,14 @@ fn extract_loc_nodes_from_str(body: &str) -> Vec<String> {
 }
 
 #[cfg(test)]
-
-#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
 
     #[test]
     fn test_extract_links() {
-        let crawler = Crawler::new(&Config::default()).unwrap();
+        let config = Config::default();
+        let crawler = Crawler::new(&config).unwrap();
         let html = "<html><a href=\"/test\">Test</a></html>";
         let links = crawler.extract_links(html, "https://example.com");
         assert_eq!(links.len(), 1);

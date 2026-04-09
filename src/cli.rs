@@ -563,7 +563,7 @@ fn clean_command(
 
 /// Show changes since last crawl
 fn diff_command(
-    since: Option<&str>,
+    _since: Option<&str>,
     breaking_only: bool,
     format: &str,
     config_path: &PathBuf,

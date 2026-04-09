@@ -9,8 +9,6 @@ pub mod search;
 mod sqlite;
 
 pub use error::DbError;
-pub use migration::{check_and_migrate, get_migration_status, MigrationStatus};
-pub use models::*;
 pub use search::SearchEngine;
 pub use sqlite::{ArticleRow, Database};
 

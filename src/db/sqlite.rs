@@ -1,5 +1,6 @@
 //! SQLite database operations
 
+use crate::db::migration::{check_and_migrate, get_migration_status};
 use crate::db::DbError;
 use crate::db::DbStats;
 use crate::pipeline::TranslatedPage;
@@ -7,7 +8,7 @@ use rusqlite::{params, Connection};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// SQLite database wrapper
 #[derive(Clone)]
@@ -33,7 +34,7 @@ impl Database {
         // WAL mode allows concurrent reads while writing, improving performance
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;
 
-        // Initialize schema
+        // Initialize legacy schema (articles table for backwards compatibility)
         conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS articles (
@@ -53,6 +54,24 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_articles_crawled ON articles(crawled_at);
             ",
         )?;
+
+        // Check migration status and run if needed
+        match get_migration_status(&conn) {
+            Ok(status) => {
+                if status.status.contains("v0.1.0") {
+                    warn!("Database is at v0.1.0 schema. Consider running: matome migrate");
+                } else if status.status.contains("v0.2.0") {
+                    info!("Database schema: {}", status.status);
+                }
+                // Try to run migration
+                if let Err(e) = check_and_migrate(&conn) {
+                    warn!("Migration check failed (non-critical): {}", e);
+                }
+            }
+            Err(e) => {
+                warn!("Could not check migration status: {}", e);
+            }
+        }
 
         info!("Database initialized at: {}", db_path.display());
 
@@ -380,4 +399,127 @@ pub struct ArticleRow {
     pub crawled_at: String,
     #[allow(dead_code)] // Future: display/update tracking
     pub updated_at: String,
+}
+
+// ============== v0.2.0: New data model methods ==============
+
+impl Database {
+    /// Save or update a page (new v0.2.0 data model)
+    pub fn save_page(&self, page: &crate::db::models::Page) -> Result<(), DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        conn.execute(
+            r#"
+            INSERT OR REPLACE INTO pages (
+                id, section_id, url, title, tree_path, breadcrumbs,
+                content_hash, doc_version, crawled_at, raw_html,
+                clean_markdown, original_markdown, translated_markdown, meta_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+            "#,
+            params![
+                page.id,
+                page.section_id,
+                page.url,
+                page.title,
+                page.tree_path,
+                page.breadcrumbs,
+                page.content_hash,
+                page.doc_version,
+                page.crawled_at,
+                page.raw_html,
+                page.clean_markdown,
+                page.original_markdown,
+                page.translated_markdown,
+                page.meta_json,
+            ],
+        )?;
+
+        debug!("Saved page: {} ({})", page.title, page.url);
+
+        Ok(())
+    }
+
+    /// Get all pages (v0.2.0)
+    pub fn get_all_pages(&self) -> Result<Vec<crate::db::models::Page>, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, section_id, url, title, tree_path, breadcrumbs,
+                   content_hash, doc_version, crawled_at, raw_html,
+                   clean_markdown, original_markdown, translated_markdown, meta_json
+            FROM pages ORDER BY tree_path
+            "#,
+        )?;
+
+        let pages = stmt.query_map([], |row| {
+            Ok(crate::db::models::Page {
+                id: row.get(0)?,
+                section_id: row.get(1)?,
+                url: row.get(2)?,
+                title: row.get(3)?,
+                tree_path: row.get(4)?,
+                breadcrumbs: row.get(5)?,
+                content_hash: row.get(6)?,
+                doc_version: row.get(7)?,
+                crawled_at: row.get(8)?,
+                raw_html: row.get(9)?,
+                clean_markdown: row.get(10)?,
+                original_markdown: row.get(11)?,
+                translated_markdown: row.get(12)?,
+                meta_json: row.get(13)?,
+            })
+        })?;
+
+        pages.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Get all documents (v0.2.0)
+    pub fn get_all_documents(&self) -> Result<Vec<crate::db::models::Document>, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let mut stmt = conn.prepare(
+            "SELECT id, base_url, name, config_json, created_at FROM documents ORDER BY name",
+        )?;
+
+        let docs = stmt.query_map([], |row| {
+            Ok(crate::db::models::Document {
+                id: row.get(0)?,
+                base_url: row.get(1)?,
+                name: row.get(2)?,
+                config_json: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?;
+
+        docs.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Get pages with tree paths for UI (v0.2.0)
+    pub fn get_pages_with_tree(&self) -> Result<Vec<(String, String)>, DbError> {
+        let pages = self.get_all_pages()?;
+        Ok(pages.into_iter().map(|p| (p.tree_path, p.title)).collect())
+    }
+
+    /// Get domain counts from pages table (v0.2.0)
+    pub fn get_domain_counts(&self) -> Result<Vec<(String, usize)>, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT d.name as domain, COUNT(p.id) as count
+            FROM documents d
+            LEFT JOIN sections s ON s.document_id = d.id
+            LEFT JOIN pages p ON p.section_id = s.id
+            GROUP BY d.id, d.name
+            ORDER BY d.name
+            "#,
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
 }

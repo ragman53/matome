@@ -6,8 +6,8 @@
 //! - pages: actual content with tree_path, content_hash, breadcrumbs
 //! - page_versions: change history
 
-use rusqlite::{Connection, Result};
-use tracing::info;
+use rusqlite::{params, Connection, Result};
+use tracing::{info, warn};
 
 use crate::db::DbError;
 
@@ -75,8 +75,251 @@ pub fn migrate_to_v0_2_0(conn: &Connection) -> Result<(), DbError> {
         "#,
     )?;
 
+    // Migrate data from articles to new tables
+    migrate_articles_data(conn)?;
+
     info!("Migration to v0.2.0 completed successfully");
     Ok(())
+}
+
+/// Migrate data from articles table to new hierarchical structure
+fn migrate_articles_data(conn: &Connection) -> Result<(), DbError> {
+    // Check if articles table exists
+    let has_articles_table: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='articles'",
+        [],
+        |row| row.get(0),
+    )?;
+    let has_articles_table = has_articles_table > 0;
+
+    if !has_articles_table {
+        info!("No articles table - fresh install");
+        return Ok(());
+    }
+
+    // Check if articles table has data
+    let article_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM articles", [], |row| row.get(0))?;
+
+    if article_count == 0 {
+        info!("No articles to migrate");
+        return Ok(());
+    }
+
+    info!("Migrating {} articles to new data model...", article_count);
+
+    // Get unique domains (these become documents)
+    let mut domains: Vec<String> = Vec::new();
+    let mut stmt = conn.prepare("SELECT DISTINCT domain FROM articles")?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    for row in rows {
+        domains.push(row?);
+    }
+
+    info!("Found {} unique domains", domains.len());
+
+    // Create document for each domain and migrate articles
+    for domain in &domains {
+        // Generate document ID from domain name
+        let doc_id = generate_uuid_from_string(domain);
+        let doc_name = domain.split('.').next().unwrap_or(domain).to_string();
+
+        // Insert document
+        conn.execute(
+            "INSERT OR IGNORE INTO documents (id, base_url, name) VALUES (?1, ?2, ?3)",
+            params![doc_id, format!("https://{}", domain), doc_name],
+        )?;
+
+        // Create default section for the document
+        let section_id = format!("{}-root", doc_id);
+        conn.execute(
+            "INSERT OR IGNORE INTO sections (id, document_id, title, path_prefix) VALUES (?1, ?2, ?3, ?4)",
+            params![section_id, doc_id, domain, ""],
+        )?;
+
+        // Get all articles for this domain
+        let mut article_stmt = conn.prepare(
+            "SELECT id, url, title, description, original_md, translated_md, crawled_at FROM articles WHERE domain = ?1"
+        )?;
+
+        let articles: Vec<(
+            i64,
+            String,
+            Option<String>,
+            Option<String>,
+            String,
+            Option<String>,
+            String,
+        )> = article_stmt
+            .query_map(params![domain], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                ))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // Migrate each article to pages table
+        for (old_id, url, title, description, original_md, translated_md, crawled_at) in articles {
+            let page_id = generate_uuid_from_string(&url);
+
+            // Compute content hash
+            let content_hash = compute_sha256_hash(&original_md);
+
+            // Generate tree_path from URL
+            let tree_path = generate_tree_path_from_url(&url, domain);
+
+            // Generate breadcrumbs JSON
+            let breadcrumbs = generate_breadcrumbs(&tree_path);
+
+            conn.execute(
+                r#"
+                INSERT OR REPLACE INTO pages (
+                    id, section_id, url, title, tree_path, breadcrumbs,
+                    content_hash, crawled_at, clean_markdown, original_markdown, translated_markdown,
+                    meta_json
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                "#,
+                params![
+                    page_id,
+                    section_id,
+                    url,
+                    title,
+                    tree_path,
+                    breadcrumbs,
+                    content_hash,
+                    crawled_at,
+                    original_md,
+                    original_md,
+                    translated_md,
+                    serde_json::json!({
+                        "description": description,
+                        "original_article_id": old_id,
+                        "migrated": true
+                    }).to_string(),
+                ],
+            )?;
+        }
+    }
+
+    // Verify migration
+    let page_count: i64 = conn.query_row("SELECT COUNT(*) FROM pages", [], |row| row.get(0))?;
+    let doc_count: i64 = conn.query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))?;
+    let section_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM sections", [], |row| row.get(0))?;
+
+    info!(
+        "Migration complete: {} documents, {} sections, {} pages created",
+        doc_count, section_count, page_count
+    );
+
+    if page_count != article_count {
+        warn!(
+            "Article count mismatch: {} articles vs {} pages",
+            article_count, page_count
+        );
+    }
+
+    Ok(())
+}
+
+/// Generate a UUID-like string from a string for consistent IDs
+fn generate_uuid_from_string(s: &str) -> String {
+    use sha2::Sha256 as HashTrait;
+    use sha2::Digest;
+
+    let mut hasher = HashTrait::new();
+    hasher.update(s.as_bytes());
+    let result = hasher.finalize();
+
+    // Format as UUID v5-like (using SHA256)
+    let hash_hex = format!("{:x}", result);
+    format!(
+        "{}-{}-{}-{}-{}",
+        &hash_hex[0..8],
+        &hash_hex[8..12],
+        format!("5{}", &hash_hex[13..16]),
+        format!("8{}", &hash_hex[16..19]),
+        &hash_hex[24..36]
+    )
+}
+
+/// Compute SHA-256 hash of content
+fn compute_sha256_hash(content: &str) -> String {
+    use sha2::Sha256 as HashTrait;
+    use sha2::Digest;
+
+    let mut hasher = HashTrait::new();
+    hasher.update(content.as_bytes());
+    let result = hasher.finalize();
+    format!("{:x}", result)
+}
+
+/// Generate tree_path from URL and domain
+fn generate_tree_path_from_url(url: &str, domain: &str) -> String {
+    // Remove domain from URL and create path
+    let path = url.replace(&format!("https://{}", domain), "");
+    let path = path.replace(&format!("http://{}", domain), "");
+
+    // If empty, use root
+    if path.is_empty() || path == "/" {
+        return format!("/{}/_root", domain.split('.').next().unwrap_or(domain));
+    }
+
+    // Clean up the path
+    let clean_path = path.trim_end_matches('/');
+    format!(
+        "/{}{}",
+        domain.split('.').next().unwrap_or(domain),
+        clean_path
+    )
+}
+
+/// Generate breadcrumbs JSON from tree_path
+fn generate_breadcrumbs(tree_path: &str) -> String {
+    let segments: Vec<&str> = tree_path.split('/').filter(|s| !s.is_empty()).collect();
+
+    let crumbs: Vec<serde_json::Value> = segments
+        .iter()
+        .enumerate()
+        .map(|(idx, s)| {
+            let path_parts: Vec<&str> = segments[..=idx].to_vec();
+            let path = format!("/tree/{}", path_parts.join("/"));
+            serde_json::json!({
+                "title": to_title_case(s),
+                "path": path
+            })
+        })
+        .collect();
+
+    serde_json::to_string(&crumbs).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// Convert path segment to Title Case
+fn to_title_case(s: &str) -> String {
+    let lower = s.to_lowercase();
+    let acronyms = [
+        "api", "html", "css", "xml", "json", "sql", "http", "https", "url", "uri",
+    ];
+    if acronyms.contains(&lower.as_str()) {
+        return s.to_uppercase();
+    }
+    s.split(|c| c == '-' || c == '_')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(c) => c.to_uppercase().chain(chars).collect(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Check if migration is needed and run if necessary

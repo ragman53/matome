@@ -60,7 +60,7 @@ impl AgentExporter {
 
         // Try to use tiktoken, fall back to character-based if unavailable
         let fallback = FallbackTokenCounter::new();
-        let initial_estimate = fallback.count("test");
+        let _initial_estimate = fallback.count("test");
 
         warn!(
             "Agent exporter initialized (fallback counter ready, {} chars/token ratio)",

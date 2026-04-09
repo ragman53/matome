@@ -5,4 +5,4 @@
 
 pub mod agent;
 
-pub use agent::{AgentError, AgentExporter, ExportResult};
+pub use agent::AgentExporter;

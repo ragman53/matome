@@ -67,7 +67,7 @@ impl TokenCounter {
         }
 
         let chars_per_token = text.len() / tokens.len();
-        let approx_chars = max_tokens * chars_per_token;
+        let _approx_chars = max_tokens * chars_per_token;
 
         // Split by lines first
         let lines: Vec<&str> = text.lines().collect();

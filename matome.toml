@@ -1,19 +1,26 @@
-# matome configuration
-
 [core]
-data_dir = "./.matome"
+data-dir = ".matome"
 
 [[domain]]
 url = "https://docs.mistral.ai/"
 include = ["/**"]
 
+[[domain]]
+url = "https://example.com/"
+include = ["/**"]
+
+[[domain]]
+url = "https://docs.python.org/"
+include = ["/**"]
+
 [translate]
 provider = "none"
 model = "translategemma:4b"
-target_lang = "ja"
-glossary_file = "glossary.toml"
+target-lang = "ja"
 
 [crawl]
 concurrency = 16
-respect_robots = true
+respect-robots = true
 timeout = 60
+max-pages = 0
+treat-subdomains-same = false

@@ -75,6 +75,7 @@ pub fn create_app(data_dir: PathBuf) -> Result<Router, ServerError> {
         .route("/tree/*path", get(handlers::tree_page))
         .route("/tree", get(handlers::tree_root))
         .route("/api/tree", get(handlers::api_tree))
+        .route("/api/pages", get(handlers::api_pages))  // v0.2.0: Pages API
         // v0.2.0: Diff Mode routes
         .route("/diff", get(handlers::diff_page))
         .route("/api/changes", get(handlers::api_changes))
