@@ -54,6 +54,9 @@ serde_json = "1"  # v0.2.0: JSON output for diff command
 dirs = "5"  # v0.2.0: Agent mode workspace directory
 chrono = "0.4"  # v0.2.0: Timestamps for manifests
 
+# Agent mode dependencies
+tiktoken-rs = "0.5"  # v0.2.0: Accurate token counting for AI context windows
+
 [dev-dependencies]
 tempfile = "3"
 tokio-test = "0.4"
