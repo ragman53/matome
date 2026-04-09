@@ -2,7 +2,7 @@
 //!
 //! Generates context-aware rules and configuration files for each AI platform.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -278,7 +278,7 @@ commit-msg: [docs] {workspace_name}: {{description}}
 #[derive(Debug)]
 pub struct TemplateResult {
     pub files_created: usize,
-    pub agent_dir: Path,
+    pub agent_dir: PathBuf,
 }
 
 #[cfg(test)]

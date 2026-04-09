@@ -8,6 +8,7 @@ use std::process::ExitCode;
 use tracing::error;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod agent;  // v0.2.0: Agent templates and token counting
 mod cli;
 mod config;
 mod pipeline;

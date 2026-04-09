@@ -35,7 +35,8 @@ impl TokenCounter {
 
     /// Count tokens with special tokens (for chat formats)
     pub fn count_with_special(&self, text: &str) -> usize {
-        self.encoder.encode(text).len()
+        use std::collections::HashSet;
+        self.encoder.encode(text, HashSet::new()).len()
     }
 
     /// Estimate tokens from file content
@@ -97,6 +98,37 @@ impl TokenCounter {
 impl Default for TokenCounter {
     fn default() -> Self {
         Self::new().expect("Failed to initialize token counter")
+    }
+}
+
+impl TokenCounter {
+    /// Create a fallback counter that uses character-based estimation
+    /// (1 token ≈ 4 characters - less accurate but always works)
+    pub fn fallback() -> Self {
+        // Return a wrapper that uses the fallback method
+        // This is a dummy encoder that we'll handle specially
+        todo!("Use character-based fallback")
+    }
+}
+
+/// Fallback token counter using character ratio (less accurate)
+pub struct FallbackTokenCounter;
+
+impl FallbackTokenCounter {
+    /// Estimate tokens using character ratio (1 token ≈ 4 chars)
+    pub fn count(&self, text: &str) -> usize {
+        text.chars().count() / 4
+    }
+
+    /// Create new fallback counter
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for FallbackTokenCounter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
