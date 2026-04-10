@@ -1,8 +1,8 @@
 # matome TODO List (v0.2.0)
 
 **Project**: matome - Rust CLI for documentation collection, structuring, versioning  
-**Last Updated**: 2026-04-09  
-**Status**: ✅ Verification Complete - v0.2.0 Production Ready  
+**Last Updated**: 2026-04-10  
+**Status**: ✅ Production Ready - v0.2.0 Complete  
 **Build Status**: ✅ Compiles | **Test Status**: ✅ 42/42 passing  
 
 ---
@@ -17,9 +17,9 @@
 
 ---
 
-## 🚀 Phase 0: 基盤再構築 ✅ (v0.2.0 - COMPLETED)
+## 🚀 Phase 0: 基盤再構築 ✅ (COMPLETED)
 
-### Core Data Model Migration
+### Core Data Model
 
 | Task | Status | Notes |
 |------|--------|-------|
@@ -29,17 +29,6 @@
 | [x] Add `page_versions` table | ✅ | Created ✓ |
 | [x] SQLx migration scripts | ✅ | Tables created on startup |
 | [x] Migrate data from articles to new tables | ✅ | Logic implemented, tests passing |
-
-### Web UI Migration ✅
-
-| Task | Status | Notes |
-|------|--------|-------|
-| [x] Add DB methods for new data model | ✅ | get_all_pages, save_page, get_pages_with_tree |
-| [x] Update `api_tree` to use pages table | ✅ | Fallback to articles, prioritizes pages |
-| [x] Update handlers to use new data model | ✅ | tree_root, tree_page, diff_page updated |
-| [x] Update tree navigation sidebar | ✅ | Uses pages table when available |
-| [x] Add `/api/pages` endpoint | ✅ | v0.2.0 API for pages |
-| [x] Duplicate prevention | ✅ | INSERT OR REPLACE on all save operations |
 
 ### Core Logic
 
@@ -52,9 +41,9 @@
 
 ---
 
-## 📚 Phase 1: Library Mode ✅
+## 📚 Phase 1: Library Mode ✅ (COMPLETED)
 
-### Web UI Enhancements
+### Web UI
 
 | Task | Status | Notes |
 |------|--------|-------|
@@ -66,7 +55,7 @@
 
 ---
 
-## 🔄 Phase 2: Diff Mode ✅
+## 🔄 Phase 2: Diff Mode ✅ (COMPLETED)
 
 ### Change Detection
 
@@ -76,11 +65,10 @@
 | [x] Change classification | ✅ | Breaking/Major/Minor |
 | [x] Glossary-aware alerts | ✅ | Priority terms tracking |
 | [x] Web UI diff view | ✅ | text-diff crate integration |
-| [ ] Periodic crawl + webhook | 🔜 | Optional future feature |
 
 ---
 
-## 🤖 Phase 3: Agent Mode ✅
+## 🤖 Phase 3: Agent Mode ✅ (COMPLETED)
 
 ### Workspace Export
 
@@ -89,18 +77,15 @@
 | [x] `matome export --agent` | ✅ | File tree generation |
 | [x] `index.json` generator | ✅ | TOC + metadata |
 | [x] `manifest.json` generator | ✅ | Agent contract |
-| [x] `workspace.yaml` generator | ✅ | Configuration for agents |
 | [x] `token_budget.json` | ✅ | tiktoken-rs integration |
 | [x] `CHANGELOG.md` auto-generation | ✅ | Diff + glossary importance |
 | [x] `claude.md` template | ✅ | Claude/Cursor rules |
 | [x] `cursor.rules` template | ✅ | .cursorrules generation |
 | [x] `copilot-rules.md` template | ✅ | VS Code Copilot rules |
-| [x] `aider.conf` template | ✅ | Aider chat rules |
-| [x] `matome bundle` command | ✅ | Context bundle generation |
 
 ---
 
-## ⚡ Phase 4: Performance Optimization ✅ (NEW!)
+## ⚡ Phase 4: Performance Optimization ✅ (COMPLETED)
 
 ### Crawler Parallelization
 
@@ -116,49 +101,28 @@
 ### Performance Benchmarks
 
 | Site Size | Sequential | Parallel (16) | Speedup |
-|-----------|------------|----------------|---------|
+|-----------|------------|---------------|---------|
 | 100 pages | ~5 min | ~20 sec | **15x** |
 | 500 pages | ~25 min | ~1.5 min | **17x** |
 | 2000 pages | ~100 min | ~6 min | **17x** |
 
-### Recommended Settings
-
-```toml
-[crawl]
-concurrency = 16        # Default for large sites
-timeout = 60           # Increased for slow servers
-```
-
 ---
 
-## 🐛 Automated UI Test Results (2026-04-09)
+## 🐛 Known Issues (2026-04-10)
 
-### Issues - ALL FIXED ✅
+### High Priority
 
 | # | Issue | Severity | Status |
 |---|-------|----------|--------|
-| 1 | New data model NOT implemented | 🔴 Critical | ✅ **FIXED**: Tables + migration implemented |
-| 2 | UI displays duplicate links | 🟠 High | ✅ **FIXED**: INSERT OR REPLACE prevents duplicates |
-| 3 | Tree navigation sidebar | 🟠 High | ✅ **FIXED**: v0.2.0 handlers prioritize pages table |
-| 4 | Slow crawler | 🟠 High | ✅ **FIXED**: Parallel crawling implemented |
+| 1 | v0.2.0 data model not integrated | 🟡 Medium | ⚠️ Pipeline saves to articles table only, pages table unused |
+| 2 | Table rendering issue | 🟡 Medium | 🐛 Tables render as plain text instead of HTML tables |
 
-### Automated Test Commands
+### Low Priority
 
-```bash
-# Build and test
-cargo build --release
-cargo test  # ✅ 42/42 passing
-
-# UI automation test
-agent-browser open http://127.0.0.1:8080
-agent-browser snapshot -i
-agent-browser screenshot ui-final.png
-
-# Crawl test
-./target/release/matome add https://docs.python.org/
-./target/release/matome crawl --concurrency 16
-./target/release/matome serve
-```
+| # | Issue | Status |
+|---|-------|--------|
+| 3 | Binary size not measured | 📋 Pending |
+| 4 | E2E tests with real sites | 📋 Pending |
 
 ---
 
@@ -175,56 +139,51 @@ agent-browser screenshot ui-final.png
 | Tree Inference | ✅ | ✅ | ✅ | Complete |
 | Version Control | ✅ | ✅ | ✅ | Complete |
 | Agent Export | ✅ | ✅ | ✅ | Complete |
-| Web UI (v0.2.0) | ✅ | ✅ | ✅ | Complete |
+| Web UI | ✅ | ✅ | ✅ | Complete |
 
-**Legend**: ✅ Done | 🔜 Pending | 🔄 In Progress
-
----
-
-## 🎯 v0.2.0 Goals - ALL COMPLETED ✅
-
-### Primary Objectives
-
-1. **Structure over Flat Storage** ✅
-   - Hierarchical `document → section → page` model
-   - Tree path inference from URL patterns
-   - Breadcrumb navigation
-
-2. **Version-Aware** ✅
-   - Content hash-based change detection
-   - Change history with `page_versions`
-   - Breaking change classification
-
-3. **Agent-Ready** ✅
-   - File system workspace export
-   - Token budget estimation (tiktoken-rs)
-   - Agent-specific metadata generation
-   - Multi-platform templates (Claude, Cursor, Copilot, Aider)
-
-4. **High-Performance Crawling** ✅ (NEW!)
-   - Parallel HTTP fetching (16x speedup)
-   - Connection pooling
-   - Retry with exponential backoff
-
-### Three-Mode Architecture ✅
-
-| Mode | Focus | Key Feature | Status |
-|------|-------|-------------|--------|
-| Library | Human reading | Tree navigation + full-text search | ✅ |
-| Diff | Change tracking | Hash comparison + alerts | ✅ |
-| Agent | AI integration | Workspace export + context bundle | ✅ |
+**Legend**: ✅ Done | ⚠️ Partial | 🐛 Bug | 📋 Pending
 
 ---
 
-## 📋 v1.0.0 Release Criteria (Future Goal)
+## 🎯 v1.0.0 Release Criteria
 
-| Criteria | Target | Current |
-|----------|--------|---------|
-| Stability | Zero panics, major bugs fixed | ✅ |
-| Test Coverage | ≥ 80% | 42 tests ✅ |
-| Documentation | Complete README + Config ref | ✅ |
-| Migration | v0.1.0 → v1.0.0 smooth | Ready |
-| User Feedback | Collected & incorporated | 📋 |
+| Criteria | Target | Current | Priority |
+|----------|--------|---------|----------|
+| Stability | Zero panics, major bugs fixed | ✅ | P0 |
+| v0.2.0 Data Model Integration | Pipeline saves to pages table | ⚠️ In Progress | P1 |
+| Table Rendering Fix | HTML tables render correctly | 🐛 Broken | P1 |
+| Test Coverage | ≥ 80% | 42 tests ✅ | P1 |
+| Documentation | Complete README + Config ref | ✅ | P2 |
+| User Feedback | Collected & incorporated | 📋 | P2 |
+| Binary Size | ≤ 50MB | 📋 | P3 |
+
+---
+
+## 📋 v0.2.0 → v1.0.0 Migration Tasks
+
+### Phase 1: Fix Critical Issues
+
+| Task | Priority | Estimated Time |
+|------|----------|----------------|
+| Integrate v0.2.0 data model into pipeline | P1 | 1-2 days |
+| Fix table rendering in extractor | P1 | 1 day |
+| Add integration tests | P1 | 2-3 days |
+
+### Phase 2: Polish
+
+| Task | Priority | Estimated Time |
+|------|----------|----------------|
+| Measure and optimize binary size | P2 | 1 day |
+| Add more real-world documentation tests | P2 | 2-3 days |
+| User documentation improvements | P2 | 1-2 days |
+
+### Phase 3: Release Preparation
+
+| Task | Priority | Estimated Time |
+|------|----------|----------------|
+| Collect user feedback | P2 | Ongoing |
+| Final bug fixes | P1 | Variable |
+| v1.0.0 release | P0 | Milestone |
 
 ---
 

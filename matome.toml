@@ -2,25 +2,19 @@
 data-dir = ".matome"
 
 [[domain]]
-url = "https://docs.mistral.ai/"
+url = "https://docs.python.org/3/"
 include = ["/**"]
 
 [[domain]]
-url = "https://example.com/"
-include = ["/**"]
-
-[[domain]]
-url = "https://docs.python.org/"
+url = "https://developer.mozilla.org/en-US/docs/"
 include = ["/**"]
 
 [translate]
 provider = "none"
-model = "translategemma:4b"
+model = "gemma3:4b"
 target-lang = "ja"
 
 [crawl]
-concurrency = 16
+concurrency = 8
 respect-robots = true
 timeout = 60
-max-pages = 0
-treat-subdomains-same = false
