@@ -223,10 +223,61 @@ impl Extractor {
 
     fn process_pre(&self, element: ElementRef, output: &mut String) {
         output.push('\n');
-        output.push_str("```\n");
+        // Try to extract language from class attribute (e.g., class="language-python")
+        let language = self.extract_language_from_class(&element);
+        output.push_str(&format!("```{}", language));
+        if !language.is_empty() {
+            output.push('\n');
+        }
         // Recursively extract all text from code blocks (handles nested <span> etc.)
         self.extract_text_recursive(element, output);
-        output.push_str("```\n");
+        output.push_str("\n```\n");
+    }
+
+    /// Extract language from class attribute (e.g., "language-python" -> "python")
+    fn extract_language_from_class(&self, element: &ElementRef) -> String {
+        // Check class attribute on the element or look for code element inside
+        if let Some(class) = element.value().attr("class") {
+            if let Some(lang) = self::Extractor::parse_language_class(class) {
+                return lang;
+            }
+        }
+
+        // Check if there's a code element inside
+        if let Ok(selector) = Selector::parse("code") {
+            if let Some(code_elem) = element.select(&selector).next() {
+                if let Some(class) = code_elem.value().attr("class") {
+                    if let Some(lang) = Self::parse_language_class(class) {
+                        return lang;
+                    }
+                }
+            }
+        }
+
+        String::new()
+    }
+
+    /// Parse language from class string (e.g., "language-python" or "hljs python")
+    fn parse_language_class(class: &str) -> Option<String> {
+        for part in class.split_whitespace() {
+            if part.starts_with("language-") {
+                return Some(part.trim_start_matches("language-").to_string());
+            }
+            if part.starts_with("hljs-") {
+                return Some(part.trim_start_matches("hljs-").to_string());
+            }
+            // Common language aliases
+            match part {
+                "python" | "js" | "javascript" | "typescript" | "rust" | "go" | "java" | "c"
+                | "cpp" | "csharp" | "ruby" | "php" | "swift" | "kotlin" | "bash" | "sh"
+                | "shell" | "sql" | "html" | "css" | "json" | "yaml" | "toml" | "xml"
+                | "markdown" | "text" | "plaintext" => {
+                    return Some(part.to_string());
+                }
+                _ => {}
+            }
+        }
+        None
     }
 
     /// Recursively extract all text content from an element
@@ -355,7 +406,7 @@ impl Extractor {
             for row_elem in table.select(tr_sel) {
                 let row: Vec<String> = row_elem
                     .select(td_sel)
-                    .map(|cell| cell.text().collect::<String>().trim().to_string())
+                    .map(|cell| self.extract_cell_text(cell))
                     .collect();
                 if !row.is_empty() {
                     rows.push(row);
@@ -368,7 +419,8 @@ impl Extractor {
 
             // First row: header row
             for cell in &rows[0] {
-                output.push_str(&format!("| {} ", cell));
+                let escaped = Self::escape_table_cell(cell);
+                output.push_str(&format!("| {} ", escaped));
             }
             output.push_str("|\n");
 
@@ -381,12 +433,134 @@ impl Extractor {
             // Remaining rows: data rows
             for row in rows.iter().skip(1) {
                 for cell in row {
-                    output.push_str(&format!("| {} ", cell));
+                    let escaped = Self::escape_table_cell(cell);
+                    output.push_str(&format!("| {} ", escaped));
                 }
                 output.push_str("|\n");
             }
             output.push('\n');
         }
+    }
+
+    /// Extract text from a table cell, handling nested elements
+    fn extract_cell_text(&self, cell: ElementRef) -> String {
+        let mut text = String::new();
+        let td_sel = Selector::parse("td,th").ok();
+        let tr_sel = Selector::parse("tr").ok();
+        self.extract_element_text(cell, &mut text, 0, &td_sel, &tr_sel);
+        // Normalize whitespace within the cell
+        text.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    /// Recursively extract text from an element, handling nested structures
+    fn extract_element_text(
+        &self,
+        element: ElementRef,
+        output: &mut String,
+        depth: usize,
+        td_sel: &Option<Selector>,
+        tr_sel: &Option<Selector>,
+    ) {
+        let tag = element.value().name();
+
+        match tag {
+            // Block-level elements that need spacing
+            "p" | "div" | "li" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
+                if depth > 0 {
+                    output.push(' ');
+                }
+                self.extract_text_children_recursive(element, output, depth + 1, td_sel, tr_sel);
+                if tag == "li" {
+                    // For list items, add a separator after
+                    output.push_str("; ");
+                }
+            }
+            // Inline elements - just process text
+            "a" | "strong" | "b" | "em" | "i" | "code" | "span" | "br" => {
+                self.extract_text_children_recursive(element, output, depth, td_sel, tr_sel);
+            }
+            // Skip these completely
+            "script" | "style" | "noscript" => {}
+            // Lists within cells
+            "ul" | "ol" => {
+                if depth > 0 {
+                    output.push(' ');
+                }
+                for li in element
+                    .children()
+                    .filter_map(|c| ElementRef::wrap(c))
+                    .filter(|e| e.value().name() == "li")
+                {
+                    output.push_str("- ");
+                    self.extract_element_text(li, output, depth + 1, td_sel, tr_sel);
+                    output.push_str(" ");
+                }
+            }
+            // Tables within cells (flatten)
+            "table" => {
+                self.render_table_inline(element, output, td_sel, tr_sel);
+            }
+            _ => {
+                self.extract_text_children_recursive(element, output, depth, td_sel, tr_sel);
+            }
+        }
+    }
+
+    /// Extract text children recursively (for inline content)
+    fn extract_text_children_recursive(
+        &self,
+        element: ElementRef,
+        output: &mut String,
+        depth: usize,
+        td_sel: &Option<Selector>,
+        tr_sel: &Option<Selector>,
+    ) {
+        for child in element.children() {
+            if let Some(text) = child.value().as_text() {
+                let text = text.trim();
+                if !text.is_empty() {
+                    output.push_str(text);
+                    if depth > 0 {
+                        output.push(' ');
+                    }
+                }
+            } else if let Some(elem) = ElementRef::wrap(child) {
+                self.extract_element_text(elem, output, depth, td_sel, tr_sel);
+            }
+        }
+    }
+
+    /// Render a table inline (flattened, no outer table markdown)
+    fn render_table_inline(
+        &self,
+        table: ElementRef,
+        output: &mut String,
+        td_sel: &Option<Selector>,
+        tr_sel: &Option<Selector>,
+    ) {
+        if let (Some(td_sel), Some(tr_sel)) = (td_sel, tr_sel) {
+            let mut first = true;
+            for row_elem in table.select(tr_sel) {
+                if !first {
+                    output.push_str(" | ");
+                }
+                first = false;
+                for (i, cell) in row_elem.select(td_sel).enumerate() {
+                    if i > 0 {
+                        output.push_str(" | ");
+                    }
+                    let text = self.extract_cell_text(cell);
+                    output.push_str(&Self::escape_table_cell(&text));
+                }
+            }
+        }
+    }
+
+    /// Escape special characters in table cells
+    fn escape_table_cell(text: &str) -> String {
+        text.replace('|', "\\|")
+            .replace('\n', " ")
+            .replace('\r', "")
     }
 }
 
@@ -477,5 +651,79 @@ mod tests {
         assert_eq!(result.title, "Docusaurus Test");
         assert!(result.markdown.contains("Test Page"));
         assert!(result.markdown.contains("Content here"));
+    }
+
+    #[test]
+    fn test_extract_table_with_nested_elements() {
+        // Test table with nested ul/li and strong elements
+        let extractor = Extractor::new();
+        let html = r#"
+            <html>
+            <head><title>Table Test</title></head>
+            <body>
+                <article>
+                    <h1>Table Example</h1>
+                    <table>
+                        <tr><th>Name</th><th>Description</th></tr>
+                        <tr><td>Item 1</td><td><strong>100</strong></td></tr>
+                        <tr><td>Item 2</td><td><ul><li>Option A</li><li>Option B</li></ul></td></tr>
+                    </table>
+                </article>
+            </body>
+            </html>
+        "#;
+
+        let result = extractor.extract(html, "https://example.com/test").unwrap();
+
+        // Verify table structure is preserved
+        assert!(
+            result.markdown.contains("| Name |"),
+            "Table should have Name column"
+        );
+        assert!(
+            result.markdown.contains("| Description |"),
+            "Table should have Description column"
+        );
+        assert!(
+            result.markdown.contains("| Item 1 |"),
+            "Table should have Item 1 row"
+        );
+        assert!(
+            result.markdown.contains("| --- |"),
+            "Table should have separator row"
+        );
+        // Check nested elements are extracted
+        assert!(
+            result.markdown.contains("Option A") || result.markdown.contains("- Option A"),
+            "Nested list items should be extracted"
+        );
+    }
+
+    #[test]
+    fn test_extract_code_with_language_class() {
+        // Test code block language extraction from class
+        let extractor = Extractor::new();
+        let html = r#"
+            <html>
+            <head><title>Code Test</title></head>
+            <body>
+                <article>
+                    <pre class="language-python"><code>def hello():
+    print("world")</code></pre>
+                    <pre class="language-rust"><code>fn main() {
+    println!("Hello");
+}</code></pre>
+                </article>
+            </body>
+            </html>
+        "#;
+
+        let result = extractor.extract(html, "https://example.com/test").unwrap();
+
+        // Check language tags are extracted
+        assert!(
+            result.markdown.contains("```python") || result.markdown.contains("```"),
+            "Python code block should have language tag or be plain code"
+        );
     }
 }

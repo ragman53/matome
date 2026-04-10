@@ -1,8 +1,8 @@
-# matome v0.2.0 開発ロードマップ
+# matome v0.2.1 開発ロードマップ
 
 **最終更新**: 2026-04-10
 **期間**: 16-20週間
-**状態**: ✅ Phase 0-4 全フェーズ完了 - Production Ready
+**状態**: ✅ Phase 0-4 全フェーズ完了 - Production Ready (v0.2.1)
 
 ---
 
@@ -12,6 +12,7 @@
 |-----------|------|------|
 | **v0.1.0** | ✅ 完成 | 旧プロトタイプ |
 | **v0.2.0** | ✅ 完成 | 3モードアーキテクチャ、階層構造、Agent対応 |
+| **v0.2.1** | ✅ **完成** | テーブル抽出改善、コードブロック言語検出 |
 | **v1.0.0** | 📋 目標 | 完全リリース |
 
 ---
@@ -25,10 +26,47 @@
 
 ---
 
-## ⚡ Phase 4: パフォーマンス最適化 ✅ (COMPLETED)
+## 🛠️ v0.2.1: 出力品質改善
 
-### 目標
-大規模サイト（2000+ページ）のクロール時間を劇的に短縮
+### 実装した改善
+
+| 改善 | 説明 | 影響 |
+|------|------|------|
+| **テーブル抽出改善** | ネストされたul/li、strong要素を正しく抽出 | テーブルを含むドキュメントの可読性大幅改善 |
+| **コードブロック言語検出** | HTML class属性から言語を自動検出 | ```python``` 等の язык тег保存 |
+| **セル内テキスト正規化** | 空白の正規化、特殊文字エスケープ | クリーンなMarkdown出力 |
+
+### 技術的詳細
+
+#### テーブル抽出の改善
+```rust
+// Before: cell.text().collect() - ネスト要素を無視
+// After: extract_cell_text() - 再帰的にテキスト抽出
+
+fn extract_element_text(&self, element: ElementRef, output: &mut String, depth: usize) {
+    match tag {
+        "ul" | "ol" => {
+            for li in element.children() { ... }
+        }
+        "strong" | "b" => { ... }
+        _ => self.extract_text_children_recursive(...)
+    }
+}
+```
+
+#### コードブロック言語検出
+```rust
+// class="language-python" → ```python
+// class="hljs rust" → ```rust
+fn parse_language_class(class: &str) -> Option<String> {
+    // language-* or hljs-* patterns
+    // Common language aliases
+}
+```
+
+---
+
+## ⚡ Phase 4: パフォーマンス最適化 ✅ (COMPLETED)
 
 ### 実装した最適化
 
@@ -84,36 +122,40 @@
 
 ---
 
-## 🔍 コードレビュー所見 (2026-04-10)
+## 🔍 コードレビュー所見 (2026-04-10 v0.2.1)
 
-### 発見した課題
+### 解決した課題
 
-#### 1. v0.2.0 データモデルの未統合 ⚠️
+#### 1. テーブル描画の問題 ✅ 解決
+
+**問題**: MarkdownテーブルがHTMLテーブルではなくプレーンテキストとして描画される
+
+**原因**: `cell.text().collect()` がネストされた要素（`<ul><li>`, `<strong>`）を処理できなかった
+
+**対応**: `extract_cell_text()` と `extract_element_text()` を実装し再帰的テキスト抽出
+
+**テスト**: `test_extract_table_with_nested_elements` 追加
+
+#### 2. コードブロック言語保存 ✅ 解決
+
+**問題**: `<pre class="language-python">` の言語情報が失われる
+
+**対応**: `extract_language_from_class()` と `parse_language_class()` を実装
+
+**テスト**: `test_extract_code_with_language_class` 追加
+
+### 残存課題
+
+#### v0.2.0 データモデルの未統合 ⚠️
 
 **問題**: パイプラインは `articles` テーブル（v0.1.0）にのみ保存し、`pages` テーブル（v0.2.0）には保存していない。
 
 **影響**:
 - 新しい階層モデル（documents → sections → pages）が使用されていない
-- _HANDLERS_は `pages` テーブルを最初に試行し、空の場合は `articles` テーブルにフォールバックする
+- Web UIは `pages` テーブルを最初に試行し、空の場合は `articles` テーブルにフォールバック
 - Tree navigation sidebar は articles テーブルデータをそのまま使用
 
-**場所**: `src/pipeline/mod.rs` - `process_single_page()` 関数
-
 **対応**: v0.1.0 との後方互換性を維持しつつ、段階的に v0.2.0 モデルへの移行を計画
-
-#### 2. テーブル描画の問題 🐛
-
-**問題**: MarkdownテーブルがHTMLテーブルではなくプレーンテキストとして描画される
-
-**影響**: テーブルを含むドキュメント（Python docsなど）の可読性が低下
-
-**対応**: extractor.rs の `render_table()` メソッドを確認し修正
-
-#### 3. UI出力品質 ✅
-
-- マークダウン → HTML変換は正常動作
-- コードブロック、、見出し、リンクは正しく描画
-- 日本語フォント設定は適切
 
 ---
 
@@ -123,9 +165,8 @@
 
 | タスク | 優先度 | 説明 |
 |--------|--------|------|
-| ユーザーフィードバック収集 | P0 | 実際のユーザーでのテスト |
 | v0.2.0 データモデルの統合 | P1 | Pipeline → pages テーブルへの保存 |
-| テーブル描画の修正 | P1 | HTMLテーブルとしての正しい描画 |
+| ユーザーフィードバック収集 | P0 | 実際のユーザーでのテスト |
 | パフォーマンステスト | P1 | 大規模サイトでのベンチマーク |
 | ドキュメント完善 | P2 | README + 設定リファレンス |
 
@@ -135,10 +176,26 @@
 
 | 指標 | 目標 | 現在の値 |
 |------|------|----------|
-| テストカバレッジ | ≥80% | 42 tests ✅ |
+| テストカバレッジ | ≥80% | 44 tests ✅ |
 | バイナリサイズ | ≤50MB | 未測定 |
 | クロール速度 | 100ページ/分 | ~270ページ/分 ✅ |
 | パニック発生 | 0 | ✅ |
+| テーブル抽出テスト | ✅ | test_extract_table_with_nested_elements |
+| コードブロック言語テスト | ✅ | test_extract_code_with_language_class |
+
+---
+
+## 📋 変更履歴
+
+### v0.2.1 (2026-04-10)
+
+#### 新機能
+- テーブル抽出の改善: ネストされた要素（リスト、太字）対応
+- コードブロックの言語自動検出
+
+#### テスト追加
+- `test_extract_table_with_nested_elements`
+- `test_extract_code_with_language_class`
 
 ---
 

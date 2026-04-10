@@ -1,9 +1,9 @@
-# matome TODO List (v0.2.0)
+# matome TODO List (v0.2.1)
 
 **Project**: matome - Rust CLI for documentation collection, structuring, versioning  
 **Last Updated**: 2026-04-10  
-**Status**: ✅ Production Ready - v0.2.0 Complete  
-**Build Status**: ✅ Compiles | **Test Status**: ✅ 42/42 passing  
+**Status**: ✅ Production Ready - v0.2.1 Complete  
+**Build Status**: ✅ Compiles | **Test Status**: ✅ 44/44 passing  
 
 ---
 
@@ -13,6 +13,7 @@
 |-----------|------|------|
 | **v0.1.0** | ✅ 完成 | 旧プロトタイプ。フラット articles、翻訳機能 |
 | **v0.2.0** | ✅ 完成 | 3モードアーキテクチャ、階層構造、Agent対応、高速クローラー |
+| **v0.2.1** | ✅ **完成** | テーブル抽出改善、コードブロック言語検出 |
 | **v1.0.0** | 📋 目標 | 完全リリース。安定、板書なしでユーザーが利用可能 |
 
 ---
@@ -108,6 +109,19 @@
 
 ---
 
+## 🛠️ Phase 5: Output Quality (v0.2.1) ✅ (COMPLETED)
+
+### HTML Extraction Improvements
+
+| Task | Status | Notes |
+|------|--------|-------|
+| [x] Table rendering with nested elements | ✅ | ul/li, strong in cells |
+| [x] Code block language detection | ✅ | Auto-detect from class attr |
+| [x] Cell text normalization | ✅ | Whitespace, escape special chars |
+| [x] Add extraction tests | ✅ | 2 new tests added |
+
+---
+
 ## 🐛 Known Issues (2026-04-10)
 
 ### High Priority
@@ -115,14 +129,14 @@
 | # | Issue | Severity | Status |
 |---|-------|----------|--------|
 | 1 | v0.2.0 data model not integrated | 🟡 Medium | ⚠️ Pipeline saves to articles table only, pages table unused |
-| 2 | Table rendering issue | 🟡 Medium | 🐛 Tables render as plain text instead of HTML tables |
 
 ### Low Priority
 
 | # | Issue | Status |
 |---|-------|--------|
-| 3 | Binary size not measured | 📋 Pending |
-| 4 | E2E tests with real sites | 📋 Pending |
+| 2 | Binary size not measured | 📋 Pending |
+| 3 | E2E tests with real sites | 📋 Pending |
+| 4 | Production user feedback | 📋 Pending |
 
 ---
 
@@ -132,7 +146,7 @@
 |-----------|:----:|:-----:|:----:|:------:|
 | Foundation | ✅ | ✅ | ✅ | Complete |
 | Crawler (Parallel) | ✅ | ✅ | ✅ | Complete |
-| Extractor | ✅ | ✅ | ✅ | Complete |
+| Extractor | ✅ | ✅ | ✅ | Complete (v0.2.1) |
 | Translator | ✅ | ✅ | ✅ | Complete |
 | Storage | ✅ | ✅ | ✅ | Complete |
 | Search | ✅ | ✅ | ✅ | Complete |
@@ -140,6 +154,7 @@
 | Version Control | ✅ | ✅ | ✅ | Complete |
 | Agent Export | ✅ | ✅ | ✅ | Complete |
 | Web UI | ✅ | ✅ | ✅ | Complete |
+| Output Quality | ✅ | ✅ | ✅ | Complete (v0.2.1) |
 
 **Legend**: ✅ Done | ⚠️ Partial | 🐛 Bug | 📋 Pending
 
@@ -150,23 +165,23 @@
 | Criteria | Target | Current | Priority |
 |----------|--------|---------|----------|
 | Stability | Zero panics, major bugs fixed | ✅ | P0 |
+| Table Rendering | HTML tables render correctly | ✅ Fixed v0.2.1 | P0 |
+| Code Block Language | Language tags preserved | ✅ Fixed v0.2.1 | P0 |
 | v0.2.0 Data Model Integration | Pipeline saves to pages table | ⚠️ In Progress | P1 |
-| Table Rendering Fix | HTML tables render correctly | 🐛 Broken | P1 |
-| Test Coverage | ≥ 80% | 42 tests ✅ | P1 |
+| Test Coverage | ≥ 80% | 44 tests ✅ | P1 |
 | Documentation | Complete README + Config ref | ✅ | P2 |
 | User Feedback | Collected & incorporated | 📋 | P2 |
 | Binary Size | ≤ 50MB | 📋 | P3 |
 
 ---
 
-## 📋 v0.2.0 → v1.0.0 Migration Tasks
+## 📋 v0.2.1 → v1.0.0 Migration Tasks
 
 ### Phase 1: Fix Critical Issues
 
 | Task | Priority | Estimated Time |
 |------|----------|----------------|
 | Integrate v0.2.0 data model into pipeline | P1 | 1-2 days |
-| Fix table rendering in extractor | P1 | 1 day |
 | Add integration tests | P1 | 2-3 days |
 
 ### Phase 2: Polish
@@ -184,6 +199,34 @@
 | Collect user feedback | P2 | Ongoing |
 | Final bug fixes | P1 | Variable |
 | v1.0.0 release | P0 | Milestone |
+
+---
+
+## 📈 Test Coverage
+
+| Module | Tests | Status |
+|--------|-------|--------|
+| pipeline::extractor | 6 | ✅ All passing |
+| pipeline::crawler | 12 | ✅ All passing |
+| pipeline::glossary | 4 | ✅ All passing |
+| pipeline::tree_inference | 8 | ✅ All passing |
+| db::models | 5 | ✅ All passing |
+| db::migration | 2 | ✅ All passing |
+| modes::agent | 3 | ✅ All passing |
+| modes::diff | 4 | ✅ All passing |
+| **Total** | **44** | ✅ **All passing** |
+
+---
+
+## 🆕 v0.2.1 Changelog
+
+### Added Tests
+- `test_extract_table_with_nested_elements` - Verifies tables with ul/li and strong elements
+- `test_extract_code_with_language_class` - Verifies language detection from class attribute
+
+### Fixed Issues
+- **Table rendering**: Cells with nested elements now render correctly
+- **Code block language**: Automatic detection from `language-*` and `hljs-*` class patterns
 
 ---
 

@@ -1,15 +1,15 @@
 # matome
 
-**Your personal technical documentation infrastructure.** (v0.2.0)
+**Your personal technical documentation infrastructure.** (v0.2.1)
 
-> ✅ **Production Ready** - v0.2.0 feature complete with high-performance parallel crawling.
+> ✅ **Production Ready** - v0.2.1 with improved HTML extraction and output quality.
 
 matome automatically crawls documentation from specified websites, organizes them into hierarchical structures, tracks version changes, and provides a local web portal for browsing—all in one unified experience.
 
-**New in v0.2.0**: 
-- ⚡ **High-performance parallel crawling** (up to 17x faster)
-- 🤖 Agent-Ready workspace export for AI coding assistants
-- 🔄 Hierarchical document structure with tree navigation
+**New in v0.2.1**: 
+- 🛠️ **Improved table extraction** - Tables with nested elements (lists, bold text) render correctly
+- 🎨 **Code block language detection** - Automatic language tagging from HTML classes
+- ⚡ **Production-ready output quality** - Clean, structured Markdown preservation
 
 ## ✨ Features
 
@@ -215,6 +215,7 @@ matome export --agent --workspace <name>  # Export for AI agents
 - Toggle between **翻訳 (Translated)** and **原文 (Original)**
 - Clean typography optimized for documentation
 - Code blocks with syntax highlighting
+- Tables rendered properly with nested elements preserved
 
 ## 🗂️ Data Structure
 
@@ -279,6 +280,39 @@ matome crawl --concurrency 2
 | docs.python.org | 2-4 | Strict rate limiting |
 | docs.rs | 4-8 | Moderate rate limiting |
 | example.com | 16 | Local testing |
+
+## 🔧 Output Quality (v0.2.1)
+
+### HTML Extraction Improvements
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Table rendering | ✅ Fixed | Nested lists, bold text in cells preserved |
+| Code blocks | ✅ Fixed | Language tags auto-detected from class |
+| Headings | ✅ | Proper hierarchy with # syntax |
+| Links | ✅ | Markdown link format preserved |
+| Images | ✅ | Alt text and src preserved |
+| Lists | ✅ | Ordered and unordered lists |
+
+### Example Output
+
+**Input HTML with nested elements:**
+```html
+<table>
+  <tr><th>Name</th><th>Options</th></tr>
+  <tr>
+    <td>Item</td>
+    <td><ul><li>A</li><li>B</li></ul></td>
+  </tr>
+</table>
+```
+
+**Output Markdown:**
+```markdown
+| Name | Options |
+| --- | --- |
+| Item | - A; - B |
+```
 
 ## 📄 License
 
