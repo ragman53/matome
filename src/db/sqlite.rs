@@ -6,6 +6,7 @@ use crate::db::DbStats;
 use crate::pipeline::TranslatedPage;
 use rusqlite::{params, Connection};
 use std::collections::HashSet;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
@@ -20,7 +21,7 @@ pub struct Database {
 
 impl Database {
     /// Create a new database connection
-    pub fn new(data_dir: &PathBuf) -> Result<Self, DbError> {
+    pub fn new(data_dir: &Path) -> Result<Self, DbError> {
         let db_path = data_dir.join("matome.db");
 
         // Create directory if needed
@@ -405,6 +406,7 @@ pub struct ArticleRow {
 
 impl Database {
     /// Save or update a page (new v0.2.0 data model)
+    #[allow(dead_code)]
     pub fn save_page(&self, page: &crate::db::models::Page) -> Result<(), DbError> {
         let conn = self.conn.lock().unwrap();
 
@@ -475,6 +477,7 @@ impl Database {
     }
 
     /// Get all documents (v0.2.0)
+    #[allow(dead_code)]
     pub fn get_all_documents(&self) -> Result<Vec<crate::db::models::Document>, DbError> {
         let conn = self.conn.lock().unwrap();
 

@@ -81,7 +81,7 @@ fn to_title_case(s: &str) -> String {
     if acronyms.contains(&lower.as_str()) {
         return s.to_uppercase();
     }
-    s.split(|c| c == '-' || c == '_')
+    s.split(['-', '_'])
         .map(|word| {
             let mut chars = word.chars();
             match chars.next() {
@@ -126,6 +126,7 @@ pub fn render_tree_nav(nodes: &[TreeNode], depth: usize) -> String {
 }
 
 /// Generate simple domain-based navigation (fallback for flat data)
+#[allow(dead_code)]
 pub fn render_domain_nav(domains: &[(String, usize)]) -> String {
     let mut html = String::new();
     html.push_str(

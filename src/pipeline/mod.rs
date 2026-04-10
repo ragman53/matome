@@ -62,19 +62,28 @@ pub struct ExtractedPage {
 pub struct TranslatedPage {
     #[allow(dead_code)] // Future: debugging, logging
     pub url: String,
+    #[allow(dead_code)] // Future: debugging, logging
     pub title: String,
+    #[allow(dead_code)] // Future: debugging, logging
     pub description: Option<String>,
+    #[allow(dead_code)] // Future: debugging, logging
     pub original_md: String,
+    #[allow(dead_code)] // Future: debugging, logging
     pub translated_md: String,
+    #[allow(dead_code)] // Future: debugging, logging
     pub domain: String,
-    // v0.2.0: hierarchical data
+    // v0.2.0: hierarchical data (computed but not yet read back)
+    #[allow(dead_code)]
     pub tree_path: String,
+    #[allow(dead_code)]
     pub breadcrumbs: Vec<String>,
+    #[allow(dead_code)]
     pub content_hash: String,
 }
 
 /// Pipeline execution report
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct PipelineReport {
     pub pages_crawled: usize,
     pub pages_extracted: usize,
@@ -291,11 +300,6 @@ impl Pipeline {
     }
 }
 
-impl Default for PipelineReport {
-    fn default() -> Self {
-        Self { pages_crawled: 0, pages_extracted: 0, pages_translated: 0, pages_stored: 0, errors: Vec::new() }
-    }
-}
 
 impl std::ops::AddAssign for PipelineReport {
     fn add_assign(&mut self, rhs: Self) {

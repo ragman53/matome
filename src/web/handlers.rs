@@ -563,6 +563,7 @@ pub struct ChangeSummaryJson {
 struct ChangeSummaryHtml {
     id: i64,
     title: String,
+    #[allow(dead_code)]
     url: String,
     domain: String,
     change_type: String,

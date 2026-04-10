@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum TemplateError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -15,6 +16,7 @@ pub enum TemplateError {
 
 /// Agent platform templates
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
 pub enum AgentPlatform {
     /// Claude Code / Claude Desktop
     Claude,
@@ -30,6 +32,7 @@ pub enum AgentPlatform {
 
 impl AgentPlatform {
     /// Parse from string
+    #[allow(dead_code)]
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "claude" | "claude-code" | "claude-desktop" => AgentPlatform::Claude,
@@ -41,6 +44,7 @@ impl AgentPlatform {
     }
 
     /// Get config file name
+    #[allow(dead_code)]
     pub fn config_file(&self) -> &str {
         match self {
             AgentPlatform::Claude => "CLAUDE.md",
@@ -106,6 +110,7 @@ Documentation workspace for AI-assisted development.{version_note}
     }
 
     /// Generate .cursorrules for Cursor IDE
+    #[allow(dead_code)]
     pub fn cursor_rules(
         workspace_name: &str,
         doc_version: Option<&str>,
@@ -164,6 +169,7 @@ When you see these terms in the codebase, follow the documented patterns:
     }
 
     /// Generate .copilot-rules.md for VS Code Copilot
+    #[allow(dead_code)]
     pub fn copilot_rules(
         workspace_name: &str,
         doc_version: Option<&str>,
@@ -213,6 +219,7 @@ cat token_budget.json
     }
 
     /// Generate .aider.conf for Aider
+    #[allow(dead_code)]
     pub fn aider_conf(workspace_name: &str) -> String {
         format!(
             r#"# Aider Configuration: {workspace_name}
@@ -231,6 +238,7 @@ commit-msg: [docs] {workspace_name}: {{description}}
     }
 
     /// Generate all templates for a workspace
+    #[allow(dead_code)]
     pub fn generate_all(
         base_dir: &Path,
         workspace_name: &str,
@@ -276,6 +284,7 @@ commit-msg: [docs] {workspace_name}: {{description}}
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct TemplateResult {
     pub files_created: usize,
     pub agent_dir: PathBuf,

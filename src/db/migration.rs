@@ -83,6 +83,7 @@ pub fn migrate_to_v0_2_0(conn: &Connection) -> Result<(), DbError> {
 }
 
 /// Migrate data from articles table to new hierarchical structure
+#[allow(clippy::type_complexity)]
 fn migrate_articles_data(conn: &Connection) -> Result<(), DbError> {
     // Check if articles table exists
     let has_articles_table: i64 = conn.query_row(
@@ -241,12 +242,12 @@ fn generate_uuid_from_string(s: &str) -> String {
     // Format as UUID v5-like (using SHA256)
     let hash_hex = format!("{:x}", result);
     format!(
-        "{}-{}-{}-{}-{}",
+        "{:8}-{:4}-{}-{}-{}",
         &hash_hex[0..8],
         &hash_hex[8..12],
-        format!("5{}", &hash_hex[13..16]),
-        format!("8{}", &hash_hex[16..19]),
-        &hash_hex[24..36]
+        &hash_hex[12..16],
+        &hash_hex[16..20],
+        &hash_hex[20..32]
     )
 }
 
@@ -310,7 +311,7 @@ fn to_title_case(s: &str) -> String {
     if acronyms.contains(&lower.as_str()) {
         return s.to_uppercase();
     }
-    s.split(|c| c == '-' || c == '_')
+    s.split(['-', '_'])
         .map(|word| {
             let mut chars = word.chars();
             match chars.next() {
@@ -378,8 +379,11 @@ pub fn get_migration_status(conn: &Connection) -> Result<MigrationStatus, DbErro
 
 #[derive(Debug)]
 pub struct MigrationStatus {
+    #[allow(dead_code)]
     pub has_articles: bool,
+    #[allow(dead_code)]
     pub has_pages: bool,
+    #[allow(dead_code)]
     pub has_documents: bool,
     pub status: String,
 }

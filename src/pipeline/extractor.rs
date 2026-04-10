@@ -206,7 +206,7 @@ impl Extractor {
         // Check if this <code> element is inside a <pre> block
         let is_in_pre = element
             .ancestors()
-            .filter_map(|p| ElementRef::wrap(p))
+            .filter_map(ElementRef::wrap)
             .any(|e| e.value().name() == "pre");
 
         // Skip code blocks inside <pre> - let process_pre handle them
@@ -304,7 +304,7 @@ impl Extractor {
         let is_ordered = tag_name == "ol";
         for (i, item) in element
             .children()
-            .filter_map(|c| ElementRef::wrap(c))
+            .filter_map(ElementRef::wrap)
             .filter(|e| e.value().name() == "li")
             .enumerate()
         {
@@ -316,7 +316,7 @@ impl Extractor {
             output.push_str(&prefix);
             for li_child in item.children() {
                 if let Some(text) = li_child.value().as_text() {
-                    output.push_str(&text.trim());
+                    output.push_str(text.trim());
                 } else if let Some(li_elem) = ElementRef::wrap(li_child) {
                     self.process_element(li_elem, output, 0, &None, &None);
                 }
@@ -357,7 +357,7 @@ impl Extractor {
     fn process_text_children(&self, element: ElementRef, output: &mut String) {
         for child in element.children() {
             if let Some(text) = child.value().as_text() {
-                output.push_str(&text.trim());
+                output.push_str(text.trim());
             } else if let Some(elem) = ElementRef::wrap(child) {
                 self.process_text_element(elem, output);
             }
@@ -488,12 +488,12 @@ impl Extractor {
                 }
                 for li in element
                     .children()
-                    .filter_map(|c| ElementRef::wrap(c))
+                    .filter_map(ElementRef::wrap)
                     .filter(|e| e.value().name() == "li")
                 {
                     output.push_str("- ");
                     self.extract_element_text(li, output, depth + 1, td_sel, tr_sel);
-                    output.push_str(" ");
+                    output.push(' ');
                 }
             }
             // Tables within cells (flatten)

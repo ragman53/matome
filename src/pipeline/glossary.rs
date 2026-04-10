@@ -3,7 +3,7 @@
 //! Handles glossary parsing and term replacement with multi-language support.
 
 use crate::config::GlossaryTerm;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -43,7 +43,7 @@ pub struct Glossary {
 
 impl Glossary {
     /// Load glossary from file
-    pub fn load(path: &PathBuf) -> Result<Self, GlossaryError> {
+    pub fn load(path: &Path) -> Result<Self, GlossaryError> {
         if !path.exists() {
             return Ok(Self::default());
         }

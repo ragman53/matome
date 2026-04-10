@@ -11,6 +11,7 @@ use crate::pipeline::content_hash::compute_content_hash;
 /// - Whether content changed
 /// - Change classification (None/Minor/Major/Breaking)
 /// - Glossary alerts for priority terms
+#[allow(dead_code)]
 pub fn compare_and_update(
     old_content: &str,
     new_content: &str,
@@ -30,7 +31,7 @@ pub fn compare_and_update(
     };
 
     // Compare hashes
-    if old_hash == &new_hash {
+    if old_hash == new_hash {
         return ChangeResult {
             change_type: ChangeType::None,
             old_hash: old_hash.to_string(),
@@ -55,6 +56,7 @@ pub fn compare_and_update(
 }
 
 /// Classify the type of change based on content diff
+#[allow(dead_code)]
 fn classify_change(old_content: &str, new_content: &str) -> ChangeType {
     // Calculate basic statistics
     let old_lines = old_content.lines().count();
@@ -70,7 +72,7 @@ fn classify_change(old_content: &str, new_content: &str) -> ChangeType {
     };
 
     // Major change: significant size difference (>30% change)
-    if size_ratio < 0.7 || size_ratio > 1.3 {
+    if !(0.7..=1.3).contains(&size_ratio) {
         return ChangeType::Major;
     }
 
@@ -81,7 +83,7 @@ fn classify_change(old_content: &str, new_content: &str) -> ChangeType {
         1.0
     };
 
-    if line_ratio < 0.7 || line_ratio > 1.3 {
+    if !(0.7..=1.3).contains(&line_ratio) {
         return ChangeType::Major;
     }
 
@@ -90,6 +92,7 @@ fn classify_change(old_content: &str, new_content: &str) -> ChangeType {
 }
 
 /// Detect glossary priority term changes
+#[allow(dead_code)]
 fn detect_glossary_changes(_old_content: &str, _new_content: &str) -> Vec<String> {
     // This is a placeholder - actual implementation would check against glossary
     // For now, return empty vec
@@ -98,6 +101,7 @@ fn detect_glossary_changes(_old_content: &str, _new_content: &str) -> Vec<String
 }
 
 /// Generate a short diff snippet showing key changes
+#[allow(dead_code)]
 fn generate_diff_snippet(old_content: &str, new_content: &str) -> Option<String> {
     // Simple approach: find first substantial difference
     let old_lines: Vec<&str> = old_content.lines().collect();

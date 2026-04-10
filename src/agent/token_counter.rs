@@ -6,6 +6,7 @@ use thiserror::Error;
 use tiktoken_rs::{cl100k_base, CoreBPE};
 
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum TokenError {
     #[error("TikToken initialization failed: {0}")]
     InitError(String),
@@ -17,10 +18,12 @@ pub enum TokenError {
 ///
 /// Provides accurate token counting for AI context windows using the cl100k_base
 /// encoding (used by GPT-4, Claude 3, and many other modern AI models).
+#[allow(dead_code)]
 pub struct TokenCounter {
     encoder: CoreBPE,
 }
 
+#[allow(dead_code)]
 impl TokenCounter {
     /// Create a new token counter
     pub fn new() -> Result<Self, TokenError> {
@@ -104,10 +107,9 @@ impl Default for TokenCounter {
 impl TokenCounter {
     /// Create a fallback counter that uses character-based estimation
     /// (1 token ≈ 4 characters - less accurate but always works)
-    pub fn fallback() -> Self {
-        // Return a wrapper that uses the fallback method
-        // This is a dummy encoder that we'll handle specially
-        todo!("Use character-based fallback")
+    #[allow(dead_code)]
+    pub fn fallback() -> FallbackTokenCounter {
+        FallbackTokenCounter::new()
     }
 }
 
@@ -134,13 +136,16 @@ impl Default for FallbackTokenCounter {
 
 /// Context budget calculator for AI agents
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ContextBudget {
     pub total_limit: usize,
     pub system_tokens: usize,
     pub reserved_tokens: usize,
 }
 
+#[allow(dead_code)]
 impl ContextBudget {
+    #[allow(dead_code)]
     pub fn new(total_limit: usize) -> Self {
         Self {
             total_limit,

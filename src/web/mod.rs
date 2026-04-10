@@ -11,7 +11,7 @@ use axum::{
     Router,
 };
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thiserror::Error;
 use tower_http::cors::{Any, CorsLayer};
@@ -110,9 +110,9 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(data_dir: &PathBuf) -> Result<Self, ServerError> {
+    pub fn new(data_dir: &Path) -> Result<Self, ServerError> {
         Ok(Self {
-            data_dir: data_dir.clone(),
+            data_dir: data_dir.to_path_buf(),
         })
     }
 

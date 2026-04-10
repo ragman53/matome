@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// Document: represents a crawled website/repository
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct Document {
     pub id: String,                  // UUID v7
     pub base_url: String,            // e.g., "https://docs.rust-lang.org/"
@@ -16,6 +17,7 @@ pub struct Document {
 
 /// Section: logical grouping within a document (e.g., "Getting Started", "API Reference")
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct Section {
     pub id: String,          // UUID
     pub document_id: String, // FK to documents
@@ -45,6 +47,7 @@ pub struct Page {
 
 /// Page version: historical record for change tracking
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct PageVersion {
     pub id: i64,                      // Auto-increment
     pub page_id: String,              // FK to pages
@@ -57,6 +60,7 @@ pub struct PageVersion {
 
 /// Page data for the new hierarchical model
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct HierarchicalPage {
     pub url: String,
     pub title: String,
@@ -89,6 +93,7 @@ pub enum ChangeType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ChangeResult {
     pub change_type: ChangeType,
     pub old_hash: String,
@@ -99,6 +104,7 @@ pub struct ChangeResult {
 
 /// Change summary for diff mode
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ChangeSummary {
     pub page_id: String,
     pub page_title: String,

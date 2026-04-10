@@ -13,6 +13,7 @@ use thiserror::Error;
 use tracing::{info, warn};
 
 /// Token counting trait for abstraction
+#[allow(dead_code)]
 trait TokenCount {
     fn count(&self, text: &str) -> usize;
 }
@@ -156,6 +157,7 @@ impl AgentExporter {
     }
 
     /// Get section for article
+    #[allow(dead_code)]
     fn get_section<'a>(
         &self,
         article: &'a ArticleRow,
@@ -167,9 +169,10 @@ impl AgentExporter {
     }
 
     /// Get article section name
-    fn get_article_section<'a>(
+    #[allow(dead_code)]
+    fn get_article_section(
         &self,
-        article: &'a ArticleRow,
+        article: &ArticleRow,
         _sections: &HashMap<String, Vec<&ArticleRow>>,
     ) -> Option<String> {
         Some(article.domain.clone())

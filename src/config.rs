@@ -3,7 +3,7 @@
 //! Handles parsing and validation of matome.toml configuration.
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 /// Configuration error types
@@ -23,6 +23,7 @@ pub enum ConfigError {
 /// Main configuration structure
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub struct Config {
     /// Core settings
     #[serde(default)]
@@ -41,16 +42,6 @@ pub struct Config {
     pub crawl: CrawlConfig,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            core: CoreConfig::default(),
-            domains: Vec::new(),
-            translate: TranslateConfig::default(),
-            crawl: CrawlConfig::default(),
-        }
-    }
-}
 
 /// Core configuration settings
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -290,6 +281,7 @@ impl GlossaryTerm {
 /// Glossary configuration (duplicate - use pipeline/glossary.rs)
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Default)]
 pub struct Glossary {
     pub terms: Vec<GlossaryTerm>,
 }
@@ -297,7 +289,7 @@ pub struct Glossary {
 #[allow(dead_code)]
 impl Glossary {
     /// Load glossary from file
-    pub fn load(path: &PathBuf) -> Result<Self, ConfigError> {
+    pub fn load(path: &Path) -> Result<Self, ConfigError> {
         let content = std::fs::read_to_string(path)?;
         let glossary: Glossary = toml::from_str(&content)?;
         Ok(glossary)
@@ -323,11 +315,6 @@ impl Glossary {
     }
 }
 
-impl Default for Glossary {
-    fn default() -> Self {
-        Self { terms: Vec::new() }
-    }
-}
 
 /// Article metadata stored in database
 #[allow(dead_code)]

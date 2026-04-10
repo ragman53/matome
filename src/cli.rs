@@ -3,6 +3,7 @@
 //! Defines all command-line interface commands and arguments.
 
 use clap::{Parser, Subcommand};
+use std::path::Path;
 use std::path::PathBuf;
 use crate::db::models::ChangeType;
 
@@ -181,7 +182,7 @@ impl Cli {
                 crawl_command(*incremental, config, *concurrency)?;
             }
             Command::Serve { config, port, host, data_dir } => {
-                serve_command(*port, host, data_dir.as_ref(), config)?;
+                serve_command(*port, host, data_dir.as_deref(), config)?;
             }
             Command::Status {
                 config,
@@ -190,7 +191,7 @@ impl Cli {
                 status_command(config, *verbose)?;
             }
             Command::Clean { all, domain, orphaned, id, config, data_dir } => {
-                clean_command(*all, domain.as_deref(), *orphaned, *id, data_dir.as_ref(), config)?;
+                clean_command(*all, domain.as_deref(), *orphaned, *id, data_dir.as_deref(), config)?;
             }
             // v0.2.0: Diff Mode
             Command::Diff { since, breaking, format, config } => {
@@ -212,7 +213,7 @@ impl Cli {
 }
 
 /// Initialize configuration files
-fn init_command(output: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn init_command(output: &Path) -> Result<(), Box<dyn std::error::Error>> {
     use std::fs;
 
     let config_path = output.join("matome.toml");
@@ -246,7 +247,7 @@ fn init_command(output: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
 fn add_command(
     url: &str,
     include: Option<&[String]>,
-    config_path: &PathBuf,
+    config_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = load_or_create_config(config_path)?;
     add_domain_to_config(&mut config, url, include)?;
@@ -256,7 +257,7 @@ fn add_command(
     Ok(())
 }
 
-fn load_or_create_config(config_path: &PathBuf) -> Result<crate::config::Config, Box<dyn std::error::Error>> {
+fn load_or_create_config(config_path: &Path) -> Result<crate::config::Config, Box<dyn std::error::Error>> {
     if config_path.exists() {
         let content = std::fs::read_to_string(config_path)?;
         toml::from_str::<crate::config::Config>(&content)
@@ -282,7 +283,7 @@ fn add_domain_to_config(
     Ok(())
 }
 
-fn save_config(config: &crate::config::Config, config_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn save_config(config: &crate::config::Config, config_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let content = toml::to_string_pretty(config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
     std::fs::write(config_path, content)?;
@@ -292,7 +293,7 @@ fn save_config(config: &crate::config::Config, config_path: &PathBuf) -> Result<
 /// Run the crawl pipeline
 fn crawl_command(
     incremental: bool,
-    config_path: &PathBuf,
+    config_path: &Path,
     concurrency: Option<usize>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::config::Config;
@@ -335,15 +336,15 @@ fn crawl_command(
 fn serve_command(
     port: u16,
     host: &str,
-    data_dir_arg: Option<&PathBuf>,
-    config_path: &PathBuf,
+    data_dir_arg: Option<&Path>,
+    config_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::config::Config;
     use crate::web::Server;
 
     // Determine data_dir: command-line arg takes priority, then config, then default
     let data_dir = if let Some(d) = data_dir_arg {
-        d.clone()
+        d.to_path_buf()
     } else if config_path.exists() {
         let content = std::fs::read_to_string(config_path)?;
         let config: Config = toml::from_str(&content)
@@ -364,7 +365,7 @@ fn serve_command(
 
 /// Show status information
 fn status_command(
-    config_path: &PathBuf,
+    config_path: &Path,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::config::Config;
@@ -405,15 +406,15 @@ fn clean_command(
     domain: Option<&str>,
     orphaned: bool,
     id: Option<i64>,
-    data_dir_arg: Option<&PathBuf>,
-    config_path: &PathBuf,
+    data_dir_arg: Option<&Path>,
+    config_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::config::Config;
     use crate::db::Database;
     use crate::db::SearchEngine;
     // Determine data_dir
     let data_dir = if let Some(d) = data_dir_arg {
-        d.clone()
+        d.to_path_buf()
     } else if config_path.exists() {
         let content = std::fs::read_to_string(config_path)?;
         let config: Config = toml::from_str(&content)
@@ -566,7 +567,7 @@ fn diff_command(
     _since: Option<&str>,
     breaking_only: bool,
     format: &str,
-    config_path: &PathBuf,
+    config_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::db::Database;
     use crate::db::models::ChangeType;
@@ -696,7 +697,7 @@ fn export_command(
     workspace: &str,
     workspace_dir: Option<&str>,
     max_tokens: usize,
-    config_path: &PathBuf,
+    config_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::db::Database;
 
@@ -742,7 +743,7 @@ fn bundle_command(
     topics: &str,
     max_tokens: usize,
     output: Option<&str>,
-    config_path: &PathBuf,
+    config_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::db::Database;
 

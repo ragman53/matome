@@ -59,6 +59,7 @@ impl Crawler {
     }
 
     /// Create a new crawler with custom concurrency
+    #[allow(dead_code)]
     pub fn with_concurrency(config: &Config, concurrency: usize) -> Result<Self, CrawlerError> {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(config.crawl.timeout))
@@ -145,8 +146,7 @@ impl Crawler {
         let total = urls.len();
         let semaphore = self.semaphore.clone();
         let client = self.client.clone();
-        let _config = self.config.clone();
-        
+
         // Progress tracking
         let completed = Arc::new(AtomicUsize::new(0));
         let start_time = std::time::Instant::now();
@@ -156,9 +156,6 @@ impl Crawler {
         let mut all_pages = Vec::with_capacity(total);
 
         for chunk in urls.chunks(batch_size) {
-            let comp_clone = completed.clone();
-            let start_clone = start_time;
-            
             let futures: Vec<_> = chunk.iter().map(|url| {
                 let url = url.clone();
                 let sem = semaphore.clone();
@@ -220,7 +217,7 @@ impl Crawler {
         let max_pages = self.config.crawl.max_pages;
 
         let completed = Arc::new(AtomicUsize::new(0));
-        let start_time = std::time::Instant::now();
+        let _start_time = std::time::Instant::now();
         
         while !to_visit.is_empty() {
             // Check max_pages limit
@@ -279,11 +276,10 @@ impl Crawler {
                 // Extract links
                 let links = self.extract_links(&html, &url);
                 for link in links {
-                    if !discovered.contains(&link) && link.starts_with(&domain_url) {
-                        if self.is_allowed_by_robots(&link, &disallowed) {
+                    if !discovered.contains(&link) && link.starts_with(&domain_url)
+                        && self.is_allowed_by_robots(&link, &disallowed) {
                             to_visit.push(link);
                         }
-                    }
                 }
                 
                 pages.push(RawPage { url, html });
@@ -296,6 +292,7 @@ impl Crawler {
     }
 
     /// Fetch a single page (used for fallback)
+    #[allow(dead_code)]
     async fn fetch_page(&self, url: &str) -> Option<RawPage> {
         debug!("Fetching: {}", url);
 

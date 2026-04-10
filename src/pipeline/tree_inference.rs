@@ -47,9 +47,9 @@ pub fn infer_tree_path(url: &str, base_url: &str) -> String {
     }
 
     // Normalize: remove version patterns like "@1.38.0" or "v1.2.3"
-    let normalized = normalize_version_segments(&path);
+    
 
-    normalized
+    normalize_version_segments(&path)
 }
 
 /// Normalize version patterns in paths
@@ -121,7 +121,7 @@ fn title_case(s: &str) -> String {
     }
 
     // Convert hyphen/underscore separated to title case
-    s.split(|c| c == '-' || c == '_')
+    s.split(['-', '_'])
         .map(word_to_title_case)
         .collect::<Vec<_>>()
         .join(" ")

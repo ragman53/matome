@@ -5,7 +5,7 @@
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Mutex;
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
@@ -25,7 +25,7 @@ pub enum SearchError {
 }
 
 /// Create index with schema
-fn create_index(index_path: &PathBuf, schema: Schema) -> Result<Index, SearchError> {
+fn create_index(index_path: &Path, schema: Schema) -> Result<Index, SearchError> {
     std::fs::create_dir_all(index_path)?;
     Index::create_in_dir(index_path, schema).map_err(|e| SearchError::Index(e.to_string()))
 }
@@ -88,7 +88,7 @@ pub struct SearchEngine {
 
 impl SearchEngine {
     /// Create a new search engine
-    pub fn new(data_dir: &PathBuf) -> Result<Self, SearchError> {
+    pub fn new(data_dir: &Path) -> Result<Self, SearchError> {
         let index_path = data_dir.join("search_index");
         let (
             schema,
@@ -276,6 +276,7 @@ impl SearchEngine {
 
     /// Search with faceted filtering
     /// v0.2.0: Filter by tree_path or doc_version
+    #[allow(dead_code)]
     pub fn search_with_facets(
         &self,
         query: &str,
@@ -448,15 +449,20 @@ impl SearchEngine {
 #[derive(Debug, Clone)]
 pub struct SearchResult {
     /// Tantivy document ID (URL hash, not SQLite row ID)
+    #[allow(dead_code)]
     pub id: i64,
     /// Article URL (use this to fetch from SQLite)
     pub url: String,
     /// Article title
+    #[allow(dead_code)]
     pub title: String,
     /// Article domain
+    #[allow(dead_code)]
     pub domain: String,
     /// v0.2.0: Hierarchical tree path
+    #[allow(dead_code)]
     pub tree_path: Option<String>,
     /// v0.2.0: Document version
+    #[allow(dead_code)]
     pub doc_version: Option<String>,
 }
