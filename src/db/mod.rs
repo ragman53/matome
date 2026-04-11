@@ -9,6 +9,7 @@ pub mod search;
 mod sqlite;
 
 pub use error::DbError;
+pub use migration::generate_uuid_from_string;
 pub use search::SearchEngine;
 pub use sqlite::{ArticleRow, Database};
 

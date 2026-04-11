@@ -231,9 +231,9 @@ fn migrate_articles_data(conn: &Connection) -> Result<(), DbError> {
 }
 
 /// Generate a UUID-like string from a string for consistent IDs
-fn generate_uuid_from_string(s: &str) -> String {
-    use sha2::Sha256 as HashTrait;
+pub fn generate_uuid_from_string(s: &str) -> String {
     use sha2::Digest;
+    use sha2::Sha256 as HashTrait;
 
     let mut hasher = HashTrait::new();
     hasher.update(s.as_bytes());
@@ -253,8 +253,8 @@ fn generate_uuid_from_string(s: &str) -> String {
 
 /// Compute SHA-256 hash of content
 fn compute_sha256_hash(content: &str) -> String {
-    use sha2::Sha256 as HashTrait;
     use sha2::Digest;
+    use sha2::Sha256 as HashTrait;
 
     let mut hasher = HashTrait::new();
     hasher.update(content.as_bytes());

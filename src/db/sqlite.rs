@@ -3,7 +3,6 @@
 use crate::db::migration::{check_and_migrate, get_migration_status};
 use crate::db::DbError;
 use crate::db::DbStats;
-use crate::pipeline::TranslatedPage;
 use rusqlite::{params, Connection};
 use std::collections::HashSet;
 use std::path::Path;
@@ -80,42 +79,6 @@ impl Database {
             conn: Arc::new(Mutex::new(conn)),
             path: db_path,
         })
-    }
-
-    /// Save or update an article
-    pub fn save_article(&self, article: &TranslatedPage) -> Result<i64, DbError> {
-        let conn = self.conn.lock().unwrap();
-
-        conn.execute(
-            r#"
-            INSERT INTO articles (url, title, description, original_md, translated_md, domain, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))
-            ON CONFLICT(url) DO UPDATE SET
-                title = excluded.title,
-                description = excluded.description,
-                original_md = excluded.original_md,
-                translated_md = excluded.translated_md,
-                updated_at = datetime('now')
-            "#,
-            params![
-                article.url,
-                article.title,
-                article.description,
-                article.original_md,
-                article.translated_md,
-                article.domain,
-            ],
-        )?;
-
-        let id = conn.query_row(
-            "SELECT id FROM articles WHERE url = ?1",
-            params![article.url],
-            |row| row.get(0),
-        )?;
-
-        debug!("Saved article: {} (id: {})", article.url, id);
-
-        Ok(id)
     }
 
     /// Get article by ID
@@ -525,4 +488,247 @@ impl Database {
 
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
+
+    /// Get pages by domain (for v0.2.0 migration)
+    #[allow(dead_code)] // Future: domain-specific page queries
+    pub fn get_pages_by_domain(&self, domain: &str) -> Result<Vec<crate::db::models::Page>, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT p.id, p.section_id, p.url, p.title, p.tree_path, p.breadcrumbs,
+                   p.content_hash, p.doc_version, p.crawled_at, p.raw_html,
+                   p.clean_markdown, p.original_markdown, p.translated_markdown, p.meta_json
+            FROM pages p
+            JOIN sections s ON s.id = p.section_id
+            JOIN documents d ON d.id = s.document_id
+            WHERE d.name = ?1 OR d.base_url LIKE ?2
+            ORDER BY p.crawled_at DESC
+            "#,
+        )?;
+
+        let pages = stmt.query_map(params![domain, format!("%{}", domain)], |row| {
+            Ok(crate::db::models::Page {
+                id: row.get(0)?,
+                section_id: row.get(1)?,
+                url: row.get(2)?,
+                title: row.get(3)?,
+                tree_path: row.get(4)?,
+                breadcrumbs: row.get(5)?,
+                content_hash: row.get(6)?,
+                doc_version: row.get(7)?,
+                crawled_at: row.get(8)?,
+                raw_html: row.get(9)?,
+                clean_markdown: row.get(10)?,
+                original_markdown: row.get(11)?,
+                translated_markdown: row.get(12)?,
+                meta_json: row.get(13)?,
+            })
+        })?;
+
+        pages.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Get page count from pages table
+    pub fn get_page_count(&self) -> Result<usize, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let count: usize = conn.query_row("SELECT COUNT(*) FROM pages", [], |row| row.get(0))?;
+        Ok(count)
+    }
+
+    /// Get all pages with domain info for status/command use
+    pub fn get_all_pages_with_domain(&self) -> Result<Vec<PageWithDomain>, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT p.id, p.url, p.title, p.tree_path, p.content_hash, p.crawled_at,
+                   p.clean_markdown, p.original_markdown, p.translated_markdown, p.meta_json,
+                   d.name as domain
+            FROM pages p
+            JOIN sections s ON s.id = p.section_id
+            JOIN documents d ON d.id = s.document_id
+            ORDER BY p.crawled_at DESC
+            "#,
+        )?;
+
+        let pages = stmt.query_map([], |row| {
+            Ok(PageWithDomain {
+                id: row.get(0)?,
+                url: row.get(1)?,
+                title: row.get(2)?,
+                tree_path: row.get(3)?,
+                content_hash: row.get(4)?,
+                crawled_at: row.get(5)?,
+                clean_markdown: row.get(6)?,
+                original_markdown: row.get(7)?,
+                translated_markdown: row.get(8)?,
+                meta_json: row.get(9)?,
+                domain: row.get(10)?,
+            })
+        })?;
+
+        pages.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Delete page by ID
+    #[allow(dead_code)] // Future: page-specific deletion
+    pub fn delete_page(&self, id: &str) -> Result<bool, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let deleted = conn.execute("DELETE FROM pages WHERE id = ?1", params![id])?;
+        Ok(deleted > 0)
+    }
+
+    /// Delete pages by domain
+    pub fn delete_pages_by_domain(&self, domain: &str) -> Result<usize, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let deleted = conn.execute(
+            r#"DELETE FROM pages WHERE section_id IN (
+                SELECT s.id FROM sections s
+                JOIN documents d ON d.id = s.document_id
+                WHERE d.name = ?1 OR d.base_url LIKE ?2
+            )"#,
+            params![domain, format!("%{}", domain)],
+        )?;
+
+        info!("Deleted {} pages from domain '{}'", deleted, domain);
+        Ok(deleted)
+    }
+
+    /// Delete orphaned pages
+    pub fn delete_orphaned_pages(&self) -> Result<usize, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let deleted = conn.execute(
+            r#"DELETE FROM pages WHERE
+                title IS NULL OR title = '' OR
+                translated_markdown IS NULL OR translated_markdown = '' OR
+                LENGTH(clean_markdown) < 50"#,
+            [],
+        )?;
+
+        info!("Deleted {} orphaned pages", deleted);
+        Ok(deleted)
+    }
+
+    /// Get orphaned pages
+    pub fn get_orphaned_pages(&self) -> Result<Vec<PageWithDomain>, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let mut stmt = conn.prepare(
+            r#"SELECT p.id, p.url, p.title, p.tree_path, p.content_hash, p.crawled_at,
+                      p.clean_markdown, p.original_markdown, p.translated_markdown, p.meta_json,
+                      d.name as domain
+               FROM pages p
+               JOIN sections s ON s.id = p.section_id
+               JOIN documents d ON d.id = s.document_id
+               WHERE p.title IS NULL OR p.title = '' OR
+                     p.translated_markdown IS NULL OR p.translated_markdown = '' OR
+                     LENGTH(p.clean_markdown) < 50
+               ORDER BY d.name, p.id"#,
+        )?;
+
+        let pages = stmt.query_map([], |row| {
+            Ok(PageWithDomain {
+                id: row.get(0)?,
+                url: row.get(1)?,
+                title: row.get(2)?,
+                tree_path: row.get(3)?,
+                content_hash: row.get(4)?,
+                crawled_at: row.get(5)?,
+                clean_markdown: row.get(6)?,
+                original_markdown: row.get(7)?,
+                translated_markdown: row.get(8)?,
+                meta_json: row.get(9)?,
+                domain: row.get(10)?,
+            })
+        })?;
+
+        pages.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Clear all pages
+    pub fn clear_pages(&self) -> Result<usize, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let deleted = conn.execute("DELETE FROM pages", [])?;
+        info!("Cleared {} pages", deleted);
+        Ok(deleted)
+    }
+
+    /// Get page by URL
+    #[allow(dead_code)] // Future: URL-based page lookup
+    pub fn get_page_by_url(&self, url: &str) -> Result<Option<crate::db::models::Page>, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let result = conn.query_row(
+            r#"SELECT p.id, p.section_id, p.url, p.title, p.tree_path, p.breadcrumbs,
+                      p.content_hash, p.doc_version, p.crawled_at, p.raw_html,
+                      p.clean_markdown, p.original_markdown, p.translated_markdown, p.meta_json
+               FROM pages p WHERE p.url = ?1"#,
+            params![url],
+            |row| {
+                Ok(crate::db::models::Page {
+                    id: row.get(0)?,
+                    section_id: row.get(1)?,
+                    url: row.get(2)?,
+                    title: row.get(3)?,
+                    tree_path: row.get(4)?,
+                    breadcrumbs: row.get(5)?,
+                    content_hash: row.get(6)?,
+                    doc_version: row.get(7)?,
+                    crawled_at: row.get(8)?,
+                    raw_html: row.get(9)?,
+                    clean_markdown: row.get(10)?,
+                    original_markdown: row.get(11)?,
+                    translated_markdown: row.get(12)?,
+                    meta_json: row.get(13)?,
+                })
+            },
+        );
+
+        match result {
+            Ok(row) => Ok(Some(row)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Get page URLs by domain for search index cleanup
+    pub fn get_page_urls_by_domain(&self, domain: &str) -> Result<HashSet<String>, DbError> {
+        let conn = self.conn.lock().unwrap();
+
+        let mut stmt = conn.prepare(
+            r#"SELECT p.url FROM pages p
+               JOIN sections s ON s.id = p.section_id
+               JOIN documents d ON d.id = s.document_id
+               WHERE d.name = ?1 OR d.base_url LIKE ?2"#,
+        )?;
+
+        let urls = stmt
+            .query_map(params![domain, format!("%{}", domain)], |row| row.get(0))?
+            .collect::<Result<HashSet<_>, _>>()?;
+
+        Ok(urls)
+    }
+}
+
+/// Page row from database with domain info
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // Future: full v0.2.0 feature integration
+pub struct PageWithDomain {
+    pub id: String,
+    pub url: String,
+    pub title: String,
+    pub tree_path: String,
+    pub content_hash: String,
+    pub crawled_at: String,
+    pub clean_markdown: String,
+    pub original_markdown: String,
+    pub translated_markdown: String,
+    pub meta_json: Option<String>,
+    pub domain: String,
 }

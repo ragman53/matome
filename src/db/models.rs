@@ -29,20 +29,20 @@ pub struct Section {
 /// Page: actual content with hierarchical information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Page {
-    pub id: String,                          // UUID
-    pub section_id: String,                  // FK to sections
-    pub url: String,                         // Original URL
-    pub title: String,                       // Page title
-    pub tree_path: String, // Hierarchical path, e.g., "/getting-started/installation"
-    pub breadcrumbs: String, // JSON array, e.g., "[\"Getting Started\", \"Installation\"]"
-    pub content_hash: String, // SHA-256 of normalized content
+    pub id: String,                  // UUID
+    pub section_id: String,          // FK to sections
+    pub url: String,                 // Original URL
+    pub title: String,               // Page title
+    pub tree_path: String,           // Hierarchical path, e.g., "/getting-started/installation"
+    pub breadcrumbs: String,         // JSON array, e.g., "[\"Getting Started\", \"Installation\"]"
+    pub content_hash: String,        // SHA-256 of normalized content
     pub doc_version: Option<String>, // Auto-detected or manual tag
-    pub crawled_at: String, // ISO 8601 timestamp
-    pub raw_html: Option<String>, // Optional: stored HTML (compressed)
-    pub clean_markdown: String, // Cleaned markdown content
-    pub original_markdown: Option<String>, // Before translation
-    pub translated_markdown: Option<String>, // After translation
-    pub meta_json: Option<String>, // Code block count, token estimate, etc.
+    pub crawled_at: String,          // ISO 8601 timestamp
+    pub raw_html: Option<String>,    // Optional: stored HTML (compressed)
+    pub clean_markdown: String,      // Cleaned markdown content
+    pub original_markdown: String,   // Before translation
+    pub translated_markdown: String, // After translation
+    pub meta_json: Option<String>,   // Code block count, token estimate, etc.
 }
 
 /// Page version: historical record for change tracking

@@ -15,15 +15,19 @@ pub use extractor::Extractor;
 pub use translator::Translator;
 pub use tree_inference::{infer_tree_path, infer_breadcrumbs};
 pub use content_hash::compute_content_hash;
+pub use change_detection::compare_and_update;
 
 use crate::config::{Config, Domain};
 use crate::db::Database;
+use crate::db::models::Page;
 use crate::db::search::SearchEngine;
+use crate::db::generate_uuid_from_string;
 use crate::pipeline::glossary::Glossary;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::Semaphore;
 use tracing::{debug, info, warn};
+use chrono::Utc;
 
 #[derive(Error, Debug)]
 pub enum PipelineError {
@@ -55,30 +59,6 @@ pub struct ExtractedPage {
     pub title: String,
     pub description: Option<String>,
     pub markdown: String,
-}
-
-/// Translated page data
-#[derive(Debug, Clone)]
-pub struct TranslatedPage {
-    #[allow(dead_code)] // Future: debugging, logging
-    pub url: String,
-    #[allow(dead_code)] // Future: debugging, logging
-    pub title: String,
-    #[allow(dead_code)] // Future: debugging, logging
-    pub description: Option<String>,
-    #[allow(dead_code)] // Future: debugging, logging
-    pub original_md: String,
-    #[allow(dead_code)] // Future: debugging, logging
-    pub translated_md: String,
-    #[allow(dead_code)] // Future: debugging, logging
-    pub domain: String,
-    // v0.2.0: hierarchical data (computed but not yet read back)
-    #[allow(dead_code)]
-    pub tree_path: String,
-    #[allow(dead_code)]
-    pub breadcrumbs: Vec<String>,
-    #[allow(dead_code)]
-    pub content_hash: String,
 }
 
 /// Pipeline execution report
@@ -254,19 +234,31 @@ impl Pipeline {
         let breadcrumbs = infer_breadcrumbs(&tree_path);
         let content_hash = compute_content_hash(&final_md);
 
-        let page = TranslatedPage {
+        // Get or create section (default root section for the domain)
+        let section_id = generate_uuid_from_string(&format!("{}-root", &ctx.domain_name));
+
+        // Create Page for new data model
+        let page = Page {
+            id: generate_uuid_from_string(&raw_page.url),
+            section_id,
             url: raw_page.url.clone(),
             title: extracted.title.clone(),
-            description: extracted.description.clone(),
-            original_md: extracted.markdown,
-            translated_md: final_md.clone(),
-            domain: ctx.domain_name.clone(),
             tree_path,
-            breadcrumbs,
+            breadcrumbs: serde_json::to_string(&breadcrumbs).unwrap_or_default(),
             content_hash,
+            doc_version: None,
+            crawled_at: Utc::now().to_rfc3339(),
+            raw_html: Some(raw_page.html.clone()),
+            clean_markdown: extracted.markdown.clone(),
+            original_markdown: extracted.markdown.clone(),
+            translated_markdown: final_md.clone(),
+            meta_json: serde_json::to_string(&serde_json::json!({
+                "description": extracted.description,
+                "domain": ctx.domain_name.clone(),
+            })).ok(),
         };
 
-        ctx.db.save_article(&page).map_err(|e| PipelineError::Storage(e.to_string()))?;
+        ctx.db.save_page(&page).map_err(|e| PipelineError::Storage(e.to_string()))?;
         
         if let Some(ref se) = ctx.search_engine {
             if let Err(e) = se.index_document(&raw_page.url, &extracted.title, &final_md, &ctx.domain_name) {

@@ -382,19 +382,54 @@ fn status_command(
     };
 
     let db = Database::new(&data_dir)?;
-    let stats = db.get_stats()?;
+    
+    // Try pages table first (v0.2.0), fallback to articles (v0.1.0)
+    let page_count = db.get_page_count().unwrap_or(0);
+    let domain_counts = db.get_domain_counts().unwrap_or_default();
+    let domains = domain_counts.len();
+    
+    if page_count > 0 {
+        // Using v0.2.0 data model
+        println!("matome Status (v0.2.0)");
+        println!("======================");
+        println!("Data directory: {}", data_dir.display());
+        println!("Total pages: {}", page_count);
+        println!("Domains: {}", domains);
+        
+        if verbose {
+            println!("\nDomain Breakdown:");
+            for (domain, count) in &domain_counts {
+                println!("  {} - {} pages", domain, count);
+            }
+            
+            // Show pages table stats
+            if let Ok(pages) = db.get_all_pages_with_domain() {
+                let total_chars: usize = pages.iter()
+                    .map(|p| p.clean_markdown.len())
+                    .sum();
+                println!("\nContent Statistics:");
+                println!("  Total content size: {} chars", total_chars);
+                println!("  Average page size: {} chars", 
+                    if page_count > 0 { total_chars / page_count } else { 0 });
+            }
+        }
+    } else {
+        // Fallback to v0.1.0
+        let stats = db.get_stats()?;
+        println!("matome Status (v0.1.0 - Legacy)");
+        println!("================================");
+        println!("Data directory: {}", data_dir.display());
+        println!("Total articles: {}", stats.total_articles);
+        println!("Indexed articles: {}", stats.indexed_articles);
+        println!("Domains: {}", stats.domains);
 
-    println!("matome Status");
-    println!("=============");
-    println!("Data directory: {}", data_dir.display());
-    println!("Total articles: {}", stats.total_articles);
-    println!("Indexed articles: {}", stats.indexed_articles);
-    println!("Domains: {}", stats.domains);
-
-    if verbose {
-        println!("\nDetailed Statistics:");
-        println!("- Original MD size: {} bytes", stats.original_md_size);
-        println!("- Translated MD size: {} bytes", stats.translated_md_size);
+        if verbose {
+            println!("\nDetailed Statistics:");
+            println!("- Original MD size: {} bytes", stats.original_md_size);
+            println!("- Translated MD size: {} bytes", stats.translated_md_size);
+        }
+        
+        println!("\n⚠️  Using legacy articles table. Run 'matome crawl' to migrate to v0.2.0.");
     }
 
     Ok(())
@@ -426,7 +461,7 @@ fn clean_command(
 
 
     let db = Database::new(&data_dir)?;
-    
+
     // Try to get search engine for index cleanup
     let search_engine = match SearchEngine::new(&data_dir) {
         Ok(se) => Some(se),
@@ -436,48 +471,70 @@ fn clean_command(
         }
     };
 
+    // Check if we have pages (v0.2.0) or articles (v0.1.0)
+    let page_count = db.get_page_count().unwrap_or(0);
+    let use_pages_table = page_count > 0;
+
     // Determine what to clean
     if all {
-        let stats = db.get_stats()?;
-        if stats.total_articles == 0 {
-            println!("No articles to delete.");
-            return Ok(());
+        if use_pages_table {
+            println!("This will delete ALL {} pages. Are you sure? [y/N]", page_count);
+        } else {
+            let stats = db.get_stats()?;
+            if stats.total_articles == 0 {
+                println!("No articles to delete.");
+                return Ok(());
+            }
+            println!("This will delete ALL {} articles. Are you sure? [y/N]", stats.total_articles);
         }
-        println!("This will delete ALL {} articles. Are you sure? [y/N]", stats.total_articles);
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
         if input.trim().to_lowercase() != "y" {
             println!("Aborted.");
             return Ok(());
         }
-        let deleted = db.clear()?;
-        println!("Deleted {} articles from database.", deleted);
         
+        if use_pages_table {
+            let deleted = db.clear_pages().map_err(|e| format!("Failed to clear pages: {}", e))?;
+            println!("Deleted {} pages from database.", deleted);
+        } else {
+            let deleted = db.clear()?;
+            println!("Deleted {} articles from database.", deleted);
+        }
+
         // Clear search index
         if let Some(ref se) = search_engine {
             se.clear()?;
             println!("Cleared search index.");
         }
     } else if let Some(d) = domain {
-        let articles = db.get_articles_by_domain(d)?;
-        if articles.is_empty() {
-            println!("No articles found for domain: {}", d);
+        // Get URLs before deleting (for index cleanup)
+        let urls = if use_pages_table {
+            db.get_page_urls_by_domain(d).map_err(|e| format!("Failed to get page URLs: {}", e))?
+        } else {
+            let articles = db.get_articles_by_domain(d)?;
+            articles.iter().map(|a| a.url.clone()).collect()
+        };
+        
+        if urls.is_empty() {
+            println!("No pages found for domain: {}", d);
             return Ok(());
         }
-        println!("This will delete {} articles from '{}'. Are you sure? [y/N]", articles.len(), d);
+        println!("This will delete {} pages from '{}'. Are you sure? [y/N]", urls.len(), d);
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
         if input.trim().to_lowercase() != "y" {
             println!("Aborted.");
             return Ok(());
         }
-        
-        // Get URLs before deleting (for index cleanup)
-        let urls: Vec<_> = articles.iter().map(|a| a.url.clone()).collect();
-        
-        let deleted = db.delete_by_domain(d)?;
-        println!("Deleted {} articles from '{}'.", deleted, d);
-        
+
+        let deleted = if use_pages_table {
+            db.delete_pages_by_domain(d).map_err(|e| format!("Failed to delete pages: {}", e))?
+        } else {
+            db.delete_by_domain(d)?
+        };
+        println!("Deleted {} pages from '{}'.", deleted, d);
+
         // Remove from search index
         if let Some(ref se) = search_engine {
             for url in urls {
@@ -486,75 +543,108 @@ fn clean_command(
             println!("Removed {} documents from search index.", deleted);
         }
     } else if orphaned {
-        // Find orphaned articles
-        let orphaned_articles = db.get_orphaned_articles()?;
-        
-        if orphaned_articles.is_empty() {
-            println!("No orphaned articles found.");
-            return Ok(());
-        }
-        
-        println!("Found orphaned articles:");
-        for a in &orphaned_articles {
-            let issue = if a.title.as_ref().map(|t| t.is_empty()).unwrap_or(true) {
-                "missing title"
-            } else if a.translated_md.as_ref().map(|t| t.is_empty()).unwrap_or(true) {
-                "missing translation"
-            } else if a.original_md.len() < 50 {
-                "content too short"
-            } else {
-                "missing description"
-            };
-            println!("  [{}] {} - {}", a.id, a.domain, issue);
-        }
-        
-        println!("\nThis will delete {} orphaned articles. Are you sure? [y/N]", orphaned_articles.len());
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
-        if input.trim().to_lowercase() != "y" {
-            println!("Aborted.");
-            return Ok(());
-        }
-        
-        // Get URLs before deleting
-        let urls: Vec<_> = orphaned_articles.iter().map(|a| a.url.clone()).collect();
-        
-        let deleted = db.delete_orphaned()?;
-        println!("Deleted {} orphaned articles from database.", deleted);
-        
-        // Remove from search index
-        if let Some(ref se) = search_engine {
-            for url in urls {
-                se.delete_by_url(&url)?;
+        // Find orphaned pages/articles
+        if use_pages_table {
+            let orphaned_pages = db.get_orphaned_pages().map_err(|e| format!("Failed to get orphaned pages: {}", e))?;
+
+            if orphaned_pages.is_empty() {
+                println!("No orphaned pages found.");
+                return Ok(());
             }
-            println!("Removed {} documents from search index.", deleted);
-        }
-    } else if let Some(article_id) = id {
-        // Get URL before deleting
-        let article = db.get_article(article_id)?;
-        let url = article.as_ref().map(|a| a.url.clone());
-        
-        if db.delete_article(article_id)? {
-            println!("Deleted article {} from database.", article_id);
-            
+
+            println!("Found orphaned pages:");
+            for p in &orphaned_pages {
+                let issue = if p.title.is_empty() {
+                    "missing title"
+                } else if p.translated_markdown.is_empty() {
+                    "missing translation"
+                } else if p.clean_markdown.len() < 50 {
+                    "content too short"
+                } else {
+                    "unknown"
+                };
+                println!("  [{}] {} ({}) - {}", &p.id[..8], p.domain, p.tree_path, issue);
+            }
+
+            println!("\nThis will delete {} orphaned pages. Are you sure? [y/N]", orphaned_pages.len());
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            if input.trim().to_lowercase() != "y" {
+                println!("Aborted.");
+                return Ok(());
+            }
+
+            // Get URLs before deleting
+            let urls: Vec<_> = orphaned_pages.iter().map(|p| p.url.clone()).collect();
+
+            let deleted = db.delete_orphaned_pages().map_err(|e| format!("Failed to delete orphaned pages: {}", e))?;
+            println!("Deleted {} orphaned pages from database.", deleted);
+
             // Remove from search index
-            if let (Some(ref se), Some(ref article_url)) = (search_engine, url) {
-                se.delete_by_url(article_url)?;
-                println!("Removed document from search index.");
+            if let Some(ref se) = search_engine {
+                for url in urls {
+                    se.delete_by_url(&url)?;
+                }
+                println!("Removed {} documents from search index.", deleted);
             }
         } else {
-            println!("Article {} not found.", article_id);
+            // Fallback to v0.1.0 orphaned check
+            let orphaned_articles = db.get_orphaned_articles()?;
+
+            if orphaned_articles.is_empty() {
+                println!("No orphaned articles found.");
+                return Ok(());
+            }
+
+            println!("Found orphaned articles:");
+            for a in &orphaned_articles {
+                let issue = if a.title.as_ref().map(|t| t.is_empty()).unwrap_or(true) {
+                    "missing title"
+                } else if a.translated_md.as_ref().map(|t| t.is_empty()).unwrap_or(true) {
+                    "missing translation"
+                } else if a.original_md.len() < 50 {
+                    "content too short"
+                } else {
+                    "missing description"
+                };
+                println!("  [{}] {} - {}", a.id, a.domain, issue);
+            }
+
+            println!("\nThis will delete {} orphaned articles. Are you sure? [y/N]", orphaned_articles.len());
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            if input.trim().to_lowercase() != "y" {
+                println!("Aborted.");
+                return Ok(());
+            }
+
+            // Get URLs before deleting
+            let urls: Vec<_> = orphaned_articles.iter().map(|a| a.url.clone()).collect();
+
+            let deleted = db.delete_orphaned()?;
+            println!("Deleted {} orphaned articles from database.", deleted);
+
+            // Remove from search index
+            if let Some(ref se) = search_engine {
+                for url in urls {
+                    se.delete_by_url(&url)?;
+                }
+                println!("Removed {} documents from search index.", deleted);
+            }
         }
+    } else if let Some(_article_id) = id {
+        // Note: ID-based deletion only works for legacy articles table
+        // For pages table, use URL-based identification
+        println!("⚠️  ID-based deletion is only supported for legacy articles table.");
+        println!("For pages table, use --domain or --orphaned options.");
     } else {
         println!("Please specify what to clean:");
-        println!("  --all          Delete all articles");
-        println!("  --domain <name> Delete articles from specific domain");
-        println!("  --orphaned     Delete articles with missing/incomplete data");
-        println!("  --id <id>      Delete specific article by ID");
+        println!("  --all          Delete all pages/articles");
+        println!("  --domain <name> Delete pages/articles from specific domain");
+        println!("  --orphaned     Delete pages/articles with missing/incomplete data");
         println!("\nExample: matome clean --all");
-        println!("         matome clean --domain developer.mozilla.org");
+        println!("         matome clean --domain docs.python.org");
         println!("         matome clean --orphaned");
-        println!("         matome clean --id 123");
     }
 
     Ok(())
@@ -571,7 +661,7 @@ fn diff_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::db::Database;
     use crate::db::models::ChangeType;
-    use crate::pipeline::compute_content_hash;
+    use crate::pipeline::compare_and_update;
     use serde_json;
 
     let data_dir = if config_path.exists() {
@@ -584,25 +674,79 @@ fn diff_command(
     };
 
     let db = Database::new(&data_dir)?;
-    let articles = db.get_all_articles()?;
-
+    
+    // Try pages table first (v0.2.0), fallback to articles (v0.1.0)
+    let page_count = db.get_page_count().unwrap_or(0);
+    
     let mut changes: Vec<DiffResult> = Vec::new();
-    for article in articles {
-        let _current_hash = compute_content_hash(&article.original_md);
-        let change_type = if breaking_only {
-            ChangeType::Breaking
-        } else {
-            ChangeType::Minor
-        };
-        changes.push(DiffResult {
-            id: article.id,
-            title: article.title.unwrap_or_else(|| "Untitled".to_string()),
-            url: article.url,
-            domain: article.domain,
-            change_type,
-            glossary_alerts: vec![],
-            crawled_at: article.crawled_at,
-        });
+    
+    if page_count > 0 {
+        // Using v0.2.0 data model with pages table
+        let pages = db.get_all_pages()?;
+        
+        for page in pages {
+            // For pages, we need to compare with a known "good" hash
+            // Since we don't have a separate snapshot system yet,
+            // we'll use the content_hash stored in the page as the baseline
+            // and compare current clean_markdown against it
+            
+            let change_result = compare_and_update(
+                &page.clean_markdown, 
+                &page.clean_markdown, // In a real system, this would be fresh crawl
+                Some(&page.content_hash)
+            );
+            
+            // Skip if no change detected
+            if change_result.change_type == ChangeType::None {
+                continue;
+            }
+            
+            let change_type = if breaking_only && change_result.change_type == ChangeType::Breaking {
+                ChangeType::Breaking
+            } else {
+                change_result.change_type
+            };
+            
+            // Skip if we only want breaking changes and this isn't one
+            if breaking_only && change_type != ChangeType::Breaking {
+                continue;
+            }
+            
+            changes.push(DiffResult {
+                id: None,
+                id_str: Some(page.id),
+                title: page.title,
+                url: page.url,
+                domain: page.tree_path.split('/').nth(1).unwrap_or("unknown").to_string(),
+                change_type,
+                glossary_alerts: change_result.glossary_alerts,
+                crawled_at: page.crawled_at,
+            });
+        }
+    } else {
+        // Fallback to v0.1.0 articles table
+        let articles = db.get_all_articles()?;
+        
+        for article in articles {
+            // For v0.1.0, we don't have content_hash tracking
+            // Just report all articles
+            let change_type = if breaking_only {
+                ChangeType::Breaking
+            } else {
+                ChangeType::Minor
+            };
+            
+            changes.push(DiffResult {
+                id: Some(article.id),
+                id_str: None,
+                title: article.title.unwrap_or_else(|| "Untitled".to_string()),
+                url: article.url,
+                domain: article.domain,
+                change_type,
+                glossary_alerts: vec![],
+                crawled_at: article.crawled_at,
+            });
+        }
     }
 
     match format {
@@ -679,7 +823,10 @@ fn mode_command(mode: &str) -> Result<(), Box<dyn std::error::Error>> {
 
 #[derive(Debug, serde::Serialize)]
 struct DiffResult {
-    id: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id_str: Option<String>,
     title: String,
     url: String,
     domain: String,

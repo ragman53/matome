@@ -1,9 +1,9 @@
 # matome TODO List (v0.2.1)
 
-**Project**: matome - Rust CLI for documentation collection, structuring, versioning  
-**Last Updated**: 2026-04-10  
-**Status**: ✅ Production Ready - v0.2.1 Complete  
-**Build Status**: ✅ Compiles | **Test Status**: ✅ 44/44 passing  
+**Project**: matome - Rust CLI for documentation collection, structuring, versioning
+**Last Updated**: 2026-04-11
+**Status**: ✅ Production Ready - v0.2.1 Complete
+**Build Status**: ✅ Compiles | **Test Status**: ✅ 44/44 passing
 
 ---
 
@@ -12,8 +12,8 @@
 | バージョン | 状態 | 説明 |
 |-----------|------|------|
 | **v0.1.0** | ✅ 完成 | 旧プロトタイプ。フラット articles、翻訳機能 |
-| **v0.2.0** | ✅ 完成 | 3モードアーキテクチャ、階層構造、Agent対応、高速クローラー |
-| **v0.2.1** | ✅ **完成** | テーブル抽出改善、コードブロック言語検出 |
+| **v0.2.0** | ✅ 完成 | 3モードアーキテクチャ、階層構造、AI Agent対用、高速クローラー |
+| **v0.2.1** | ✅ **完成** | テーブル抽出改善、コードブロック言語検出、v0.2.0モデル統合 |
 | **v1.0.0** | 📋 目標 | 完全リリース。安定、板書なしでユーザーが利用可能 |
 
 ---
@@ -30,6 +30,7 @@
 | [x] Add `page_versions` table | ✅ | Created ✓ |
 | [x] SQLx migration scripts | ✅ | Tables created on startup |
 | [x] Migrate data from articles to new tables | ✅ | Logic implemented, tests passing |
+| [x] **Pipeline integration** | ✅ NEW | Pipeline saves to `pages` table (2026-04-11) |
 
 ### Core Logic
 
@@ -122,21 +123,27 @@
 
 ---
 
-## 🐛 Known Issues (2026-04-10)
+## 🐛 Critical Issues Blocking v1.0.0
 
-### High Priority
+### High Priority - Must Fix Before v1.0
 
 | # | Issue | Severity | Status |
 |---|-------|----------|--------|
-| 1 | v0.2.0 data model not integrated | 🟡 Medium | ⚠️ Pipeline saves to articles table only, pages table unused |
+| 1 | **v0.2.0 data model integration** | 🟢 **FIXED** | ✅ **DONE 2026-04-11** |
+|   | *Pipeline saves to pages table now* | | |
+| 2 | **Missing integration tests** | 🟡 Medium | ❌ Not started |
+|   | *No end-to-end tests for full flow* | | |
+| 3 | **Binary size not measured** | 🟡 Medium | ❌ Not started |
+|   | *Target ≤50MB for distribution* | | |
+| 4 | **Extraction quality issues** | 🟠 Medium | 📋 Investigation needed |
+|   | *Some pages produce <50 chars markdown* | | |
 
-### Low Priority
+### Low Priority - Can be fixed later
 
 | # | Issue | Status |
 |---|-------|--------|
-| 2 | Binary size not measured | 📋 Pending |
-| 3 | E2E tests with real sites | 📋 Pending |
-| 4 | Production user feedback | 📋 Pending |
+| 5 | E2E tests with real sites | 📋 Pending |
+| 6 | Production user feedback | 📋 Pending |
 
 ---
 
@@ -148,15 +155,15 @@
 | Crawler (Parallel) | ✅ | ✅ | ✅ | Complete |
 | Extractor | ✅ | ✅ | ✅ | Complete (v0.2.1) |
 | Translator | ✅ | ✅ | ✅ | Complete |
-| Storage | ✅ | ✅ | ✅ | Complete |
+| Storage | ✅ | ✅ | ✅ | **✅ INTEGRATED** |
 | Search | ✅ | ✅ | ✅ | Complete |
 | Tree Inference | ✅ | ✅ | ✅ | Complete |
-| Version Control | ✅ | ✅ | ✅ | Complete |
+| Version Control | ✅ | ✅ | ✅ | **✅ INTEGRATED** |
 | Agent Export | ✅ | ✅ | ✅ | Complete |
 | Web UI | ✅ | ✅ | ✅ | Complete |
 | Output Quality | ✅ | ✅ | ✅ | Complete (v0.2.1) |
 
-**Legend**: ✅ Done | ⚠️ Partial | 🐛 Bug | 📋 Pending
+**Legend**: ✅ Done | ⚠️ Partial | 🐛 Bug | 📋 Pending | ❌ Not started
 
 ---
 
@@ -164,14 +171,15 @@
 
 | Criteria | Target | Current | Priority |
 |----------|--------|---------|----------|
-| Stability | Zero panics, major bugs fixed | ✅ | P0 |
-| Table Rendering | HTML tables render correctly | ✅ Fixed v0.2.1 | P0 |
-| Code Block Language | Language tags preserved | ✅ Fixed v0.2.1 | P0 |
-| v0.2.0 Data Model Integration | Pipeline saves to pages table | ⚠️ In Progress | P1 |
-| Test Coverage | ≥ 80% | 44 tests ✅ | P1 |
-| Documentation | Complete README + Config ref | ✅ | P2 |
-| User Feedback | Collected & incorporated | 📋 | P2 |
-| Binary Size | ≤ 50MB | 📋 | P3 |
+| **Stability** | Zero panics, major bugs fixed | ✅ | P0 |
+| **Table Rendering** | HTML tables render correctly | ✅ Fixed v0.2.1 | P0 |
+| **Code Block Language** | Language tags preserved | ✅ Fixed v0.2.1 | P0 |
+| **v0.2.0 Data Model Integration** | Pipeline saves to pages table | ✅ **FIXED 2026-04-11** | P1 |
+| **Test Coverage** | ≥ 80% | 44 tests ✅ | P1 |
+| **Extraction Quality** | Pages produce meaningful markdown | ⚠️ Needs improvement | P1 |
+| **Documentation** | Complete README + Config ref | ✅ | P2 |
+| **User Feedback** | Collected & incorporated | 📋 | P2 |
+| **Binary Size** | ≤ 50MB | 📋 | P3 |
 
 ---
 
@@ -179,26 +187,27 @@
 
 ### Phase 1: Fix Critical Issues
 
-| Task | Priority | Estimated Time |
-|------|----------|----------------|
-| Integrate v0.2.0 data model into pipeline | P1 | 1-2 days |
-| Add integration tests | P1 | 2-3 days |
+| Task | Priority | Status | Estimated Time |
+|------|----------|--------|----------------|
+| v0.2.0 data model integration | P1 | ✅ **DONE** | - |
+| Improve extraction quality | P1 | 📋 In Progress | 1-2 days |
+| Add integration tests | P1 | ❌ Not started | 2-3 days |
 
 ### Phase 2: Polish
 
-| Task | Priority | Estimated Time |
-|------|----------|----------------|
-| Measure and optimize binary size | P2 | 1 day |
-| Add more real-world documentation tests | P2 | 2-3 days |
-| User documentation improvements | P2 | 1-2 days |
+| Task | Priority | Status | Estimated Time |
+|------|----------|--------|----------------|
+| Measure and optimize binary size | P2 | ❌ Not started | 1 day |
+| Add more real-world documentation tests | P2 | 📋 Pending | 2-3 days |
+| User documentation improvements | P2 | 📋 Pending | 1-2 days |
 
 ### Phase 3: Release Preparation
 
-| Task | Priority | Estimated Time |
-|------|----------|----------------|
-| Collect user feedback | P2 | Ongoing |
-| Final bug fixes | P1 | Variable |
-| v1.0.0 release | P0 | Milestone |
+| Task | Priority | Status | Estimated Time |
+|------|----------|--------|----------------|
+| Collect user feedback | P2 | 📋 Pending | Ongoing |
+| Final bug fixes | P1 | 📋 Pending | Variable |
+| v1.0.0 release | P0 | 📋 Milestone | - |
 
 ---
 
@@ -218,7 +227,34 @@
 
 ---
 
-## 🆕 v0.2.1 Changelog
+## 🆚 v0.2.0 Spec vs Implementation
+
+### ✅ Fully Implemented
+
+- Three-mode architecture (Library, Diff, Agent)
+- Hierarchical structure (Site → Section → Page)
+- Content versioning with hash-based change detection
+- Full-text search with Tantivy
+- Parallel crawling (17x speedup)
+- Agent workspace export with manifest.json, token_budget.json, etc.
+- Table extraction with nested elements
+- Code block language detection
+- **v0.2.0 data model - pipeline integration** ✅ **NEW**
+
+### ✅ Fully Integrated
+
+- **Data Model**: `pages` table now used by pipeline (2026-04-11)
+- **Version Control**: Change detection uses `pages` table
+- **Diff Mode**: Uses `pages` table data
+
+---
+
+## 🆕 v0.2.1 Changelog (2026-04-11 Update)
+
+### Code Fixes
+- **Page model type unification**: `original_markdown` / `translated_markdown` changed from `Option<String>` to `String`
+- **Public function export**: `generate_uuid_from_string` is now public and exported from `db::mod.rs`
+- **Borrow fix**: Added `.clone()` for `final_md` to prevent ownership issues
 
 ### Added Tests
 - `test_extract_table_with_nested_elements` - Verifies tables with ul/li and strong elements
@@ -227,6 +263,30 @@
 ### Fixed Issues
 - **Table rendering**: Cells with nested elements now render correctly
 - **Code block language**: Automatic detection from `language-*` and `hljs-*` class patterns
+- **v0.2.0 model integration**: Pipeline now correctly saves to `pages` table
+
+### Investigation Needed
+- **Extraction quality**: Some pages produce <50 chars of markdown
+- **User feedback**: Real-world testing needed
+
+---
+
+## 🔧 Technical Debt
+
+### Can Be Removed (Unused Code)
+
+| Code | Reason | Priority |
+|------|--------|----------|
+| `save_article` method | Moved to `pages` table, unused | P3 |
+| `TranslatedPage` struct | Not used in pipeline | P3 |
+
+### Improvements Needed
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| Debug logging | Log each page save/skip | P2 |
+| Extraction quality | Better handling of complex sites (MDN) | P1 |
+| User feedback | Better crawl progress display | P2 |
 
 ---
 

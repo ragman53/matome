@@ -1,6 +1,6 @@
 # matome
 
-**Your personal technical documentation infrastructure.** (v0.2.1)
+**Your personal technical documentation infrastructure.** (v0.2.1 - Production Ready)
 
 > ✅ **Production Ready** - v0.2.1 with improved HTML extraction and output quality.
 
@@ -9,7 +9,7 @@ matome automatically crawls documentation from specified websites, organizes the
 **New in v0.2.1**: 
 - 🛠️ **Improved table extraction** - Tables with nested elements (lists, bold text) render correctly
 - 🎨 **Code block language detection** - Automatic language tagging from HTML classes
-- ⚡ **Production-ready output quality** - Clean, structured Markdown preservation
+- ⚡ **Enhanced output quality** - Clean, structured Markdown preservation
 
 ## ✨ Features
 

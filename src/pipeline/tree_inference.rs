@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     fn test_root_path() {
-        let base = "https://example.com/";
+        let _base = "https://example.com/";
         // Empty path after stripping should return "/"
         let path = "/".to_string();
         assert_eq!(path, "/");
